@@ -63,14 +63,14 @@ test("menu does not open on hover", () => {
   expect(menuButton.getAttribute("aria-expanded")).toBe("false");
 });
 
-test("nav shows Log in when signed out and Profile when signed in", async () => {
+test("nav shows Log in when signed out and Dashboard when signed in", async () => {
   render(<Nav />);
   expect(await screen.findByRole("link", { name: "Log in" })).toBeTruthy();
   cleanup();
 
   signedIn({ name: "Asha Verma", email: "a@psit.ac.in" });
   render(<Nav />);
-  expect(await screen.findByRole("link", { name: "Your profile" })).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "Your dashboard" })).toBeTruthy();
 });
 
 test("join form validates and hands off to sign up with details prefilled", async () => {

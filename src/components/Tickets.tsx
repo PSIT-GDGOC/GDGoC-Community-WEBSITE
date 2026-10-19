@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/profile";
+import MemberNav from "./MemberNav";
 import {
   dateStub,
   FILTERS,
@@ -103,15 +104,8 @@ export default function Tickets() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 pt-28 pb-20 sm:px-6">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-bold">
-        <a href="#" className="underline">
-          ← Home
-        </a>
-        <a href="#/profile" className="underline">
-          Profile
-        </a>
-      </div>
-      <h1 className="mt-4 font-display text-4xl font-extrabold sm:text-5xl">My tickets</h1>
+      {status !== "loading" && <MemberNav active="tickets" />}
+      <h1 className=" font-display text-4xl font-extrabold sm:text-5xl">My tickets</h1>
       <p className="mt-2 text-muted">Your event registrations and the QR codes you show at the door.</p>
 
       {status === "loading" && <LoadingList />}

@@ -77,7 +77,7 @@ A modern, animated, scroll-driven page that tells the community story:
 
 ### 🔐 Accounts & Member Home
 - Students **sign up / log in** to join the community
-- After login, the member lands on a simple **home screen with two options: Events and Projects**
+- After login, the member lands on their **dashboard**: account summary, upcoming events, their registrations, and the way into Events and Projects
 
 ### 🎟️ Events
 - Anyone can browse upcoming events (with search and filters); members log in to register
@@ -287,6 +287,25 @@ gdgoc-psit/
 - **Sample data:** `cd server && npm run seed:events` adds published sample events (marked "Sample:") covering open, nearly full, closed, cancelled, online and past events.
 - **Not built yet:** creating and editing events (admin panel, #8).
 
+### 🏠 Member Dashboard
+
+- **Page:** `/#/dashboard` is where members land after logging in or signing up (it is the default `next` for the login page). The nav's account button and the menu link to it once signed in.
+- **Access:** the page first calls `GET /api/users/me` and shows only a neutral skeleton until that succeeds, so nothing private flashes on screen. `401` sends the visitor to `/#/login?next=/dashboard`; a network or server error shows "couldn't reach the server" with a retry instead of logging them out. The API protects `/api/users/me` and `/api/tickets` on its own, so editing frontend state can't reveal anything.
+- **What it shows** (each card loads, fails and retries on its own; nothing is made up):
+
+  | Section | Data | Empty / error |
+  |---|---|---|
+  | Welcome | First name from `/api/users/me` | — |
+  | Member card + profile status | Name, email, branch, year, member since; upcoming / attended counts from `/api/tickets` (shown as `–` until loaded); prompt to add a missing branch, year or bio | — |
+  | Events | Upcoming events from `/api/events` (soonest first, up to 3) and how many there are | "No upcoming events right now" / retry |
+  | Projects | Description, link to `/#/projects` and the chapter GitHub | No project data exists yet, so no counts or highlights |
+  | Your registrations | Active upcoming tickets from `/api/tickets` (up to 3), linking to each ticket | "You haven't registered…" with a link to events / retry |
+
+- **Member navigation:** Dashboard, Events, Projects, My tickets and Profile tabs (the current page is marked with `aria-current="page"`) plus **Log out**, shown on the dashboard, My tickets and Profile pages. Log out calls `POST /api/auth/logout` (clears the session cookie) and only then goes to the login page; if it fails the member stays signed in and sees an error.
+- **Projects page:** `/#/projects` is a placeholder until the projects API exists; it links to the chapter's GitHub instead of showing invented projects.
+- **Unknown links:** any `/#/…` route that doesn't exist shows a "Page not found" page with links home, to events and to the dashboard.
+- **Not built yet:** announcements on the dashboard (the notice board is still static content, so it isn't repeated here) and project highlights (need the projects API).
+
 
 
 - **Pages:** `/#/login` (log in, with a link to sign up) and `/#/login?mode=signup`. Protected pages send signed-out users to `/#/login?next=<page>` and return them there after login.
@@ -306,7 +325,7 @@ gdgoc-psit/
 - **Tests:**
   - `npm test`: auth page behaviour (validation, password toggle, switching forms, loading, network failure, redirects).
   - `npx tsx tests/profile.test.ts`: shared validation.
-  - `cd server && npm test`: ticket lifecycle unit tests, plus API tests for registration (including concurrent duplicate sign-ups), login and wrong credentials, profile updates, password changes (other sessions signed out), expired and forged sessions, logout, role escalation, CSRF, tickets, events (listing, drafts, deadlines, cancelled events, capacity races, double clicks, cancelling and registering again, private meeting links) and rate limiting. See **Verification** for running them against a local database.
+  - `cd server && npm test`: ticket lifecycle unit tests, plus API tests for registration (including concurrent duplicate sign-ups), login and wrong credentials, profile updates, password changes (other sessions signed out), expired and forged sessions, logout, role escalation, CSRF, dashboard data protection (missing, forged, expired and stale sessions), tickets, events (listing, drafts, deadlines, cancelled events, capacity races, double clicks, cancelling and registering again, private meeting links) and rate limiting. See **Verification** for running them against a local database.
 - **Not built yet:** refresh tokens, password recovery (needs SMTP for time-limited reset links), email verification, and admin-only routes (#8 adds a `403` role check with its first admin endpoint).
 
 ---

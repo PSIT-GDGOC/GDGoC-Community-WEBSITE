@@ -125,7 +125,7 @@ export function safeNext(next: string | null): string {
   if (next && /^\/[a-z]/i.test(next)) {
     return next;
   }
-  return "/profile";
+  return "/dashboard";
 }
 
 export async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {

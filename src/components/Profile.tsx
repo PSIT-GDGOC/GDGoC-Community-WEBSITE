@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import MemberCard from "./MemberCard";
+import MemberNav from "./MemberNav";
 import { PageHeader } from "./ui";
 import {
   api,
@@ -58,7 +59,6 @@ function Note({ msg }: { msg: Msg }) {
 export default function Profile() {
   const [user, setUser] = useState<P | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
-  const [logoutMsg, setLogoutMsg] = useState<Msg>(null);
 
   const loadUser = async () => {
     setStatus("loading");
@@ -82,23 +82,12 @@ export default function Profile() {
     loadUser();
   }, []);
 
-  const logout = async () => {
-    try {
-      await api("/auth/logout", "POST");
-      location.hash = "#/login";
-    } catch {
-      setLogoutMsg({ ok: false, text: "Couldn't log out. Try again." });
-    }
-  };
-
   return (
     <main className="mx-auto max-w-6xl px-4 pt-28 pb-24 sm:px-6">
+      {user && <MemberNav active="profile" />}
       <PageHeader tag="Member area" title="Your profile" color="gblue">
         Your member card, account details and security settings in one place.
       </PageHeader>
-      <a href="#/tickets" className="hard-button mt-6 inline-block bg-gyellow px-4 py-2 font-display text-sm font-bold">
-        My tickets →
-      </a>
 
       {status === "loading" && (
         <p className="mt-10" role="status">
@@ -120,12 +109,6 @@ export default function Profile() {
         <div className="mt-12 grid items-start gap-10 lg:grid-cols-[minmax(0,360px)_1fr] lg:gap-14">
           <aside className="mx-auto w-full max-w-[360px] space-y-6 lg:sticky lg:top-28">
             <MemberCard user={user} />
-            <div className="flex flex-wrap gap-3">
-              <button type="button" className={ghost} onClick={logout}>
-                Log out
-              </button>
-            </div>
-            <Note msg={logoutMsg} />
           </aside>
 
           <div className="min-w-0 space-y-8">
