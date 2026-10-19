@@ -20,6 +20,9 @@ import Tickets from "./components/Tickets";
 import TicketDetail from "./components/TicketDetail";
 import EventsPage from "./components/EventsPage";
 import EventDetail from "./components/EventDetail";
+import Dashboard from "./components/Dashboard";
+import ProjectsPage from "./components/ProjectsPage";
+import NotFound from "./components/NotFound";
 import PageWipe, { usePageWipe } from "./components/PageWipe";
 import DeckTracker from "./components/DeckTracker";
 import DeckWorld from "./components/world/DeckWorld";
@@ -39,6 +42,8 @@ export default function App() {
     "#/login": Auth,
     "#/tickets": Tickets,
     "#/events": EventsPage,
+    "#/dashboard": Dashboard,
+    "#/projects": ProjectsPage,
   };
   const { shownHash, wipeId } = usePageWipe(hash);
   const cinematic = useCinematic();
@@ -49,6 +54,9 @@ export default function App() {
   }
   if (route.startsWith("#/events/")) {
     page = EventDetail;
+  }
+  if (!page && route.length > 2 && route.startsWith("#/")) {
+    page = NotFound;
   }
 
   useEffect(() => {

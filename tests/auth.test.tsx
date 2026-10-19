@@ -99,14 +99,14 @@ test("loading state blocks resubmits, then success goes to the next page", async
   await waitFor(() => expect(location.hash).toBe("#/events"));
 });
 
-test("already logged in skips the form; unsafe next falls back to profile", async () => {
+test("already logged in skips the form; unsafe next falls back to the dashboard", async () => {
   location.hash = "#/login?next=//evil.com";
   vi.stubGlobal(
     "fetch",
     vi.fn(() => json(200, { name: "Asha", email: "a@psit.ac.in" })),
   );
   render(<Auth />);
-  await waitFor(() => expect(location.hash).toBe("#/profile"));
+  await waitFor(() => expect(location.hash).toBe("#/dashboard"));
 });
 
 test("sign up is prefilled from the join form link", () => {
