@@ -11,15 +11,23 @@ export const COOKIE = {
   secure: PROD,
 };
 
+export const ADMIN_ROLES = ["admin", "superadmin", "organizer"];
+
 export function setSession(res, user) {
-  const payload = { id: user.id, v: user.tokenVersion };
+  const payload = { id: user.id || user._id, v: user.tokenVersion };
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "7d" });
 
   res.cookie("token", token, { ...COOKIE, maxAge: WEEK });
+  return token;
 }
 
-async function userFromRequest(req) {
-  const token = req.headers.cookie?.match(/(?:^|;\s*)token=([^;]+)/)?.[1];
+export async function userFromRequest(req) {
+  let token = req.headers.cookie?.match(/(?:^|;\s*)token=([^;]+)/)?.[1];
+  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+    token = req.headers.authorization.slice(7).trim();
+  }
+
+  if (!token) return null;
 
   try {
     const { id, v } = jwt.verify(token, process.env.JWT_SECRET);
@@ -42,6 +50,26 @@ export async function requireAuth(req, res, next) {
   }
 
   req.user = user;
+  next();
+}
+
+export async function requireAdmin(req, res, next) {
+  const user = req.user || (await userFromRequest(req));
+
+  if (!user) {
+    return res.status(401).json({ message: "Authentication required. Please log in." });
+  }
+
+  req.user = user;
+
+  if (!ADMIN_ROLES.includes(user.role)) {
+    return res.status(403).json({
+      message: "Access denied. Administrator privileges required.",
+      requiredRoles: ADMIN_ROLES,
+      currentRole: user.role,
+    });
+  }
+
   next();
 }
 

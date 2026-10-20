@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run --environment jsdom tests/auth.test.tsx tests/homepage.test.tsx tests/tickets.test.tsx tests/events.test.tsx tests/review.test.tsx",
+    "test": "vitest run --environment jsdom tests/auth.test.tsx tests/homepage.test.tsx tests/tickets.test.tsx tests/events.test.tsx tests/review.test.tsx tests/admin.test.tsx",
     "test:scripts": "tsx tests/profile.test.ts && tsx tests/oso.test.ts && tsx tests/ruru.test.ts && tsx tests/statuscard.test.ts",
     "check": "tsc --noEmit -p . && npm test && npm run test:scripts && npm run build"
   },
@@ -18,7 +18,9 @@
     "@types/three": "^0.186.0",
     "clsx": "2.1.1",
     "framer-motion": "^14.0.0",
+    "jsqr": "^1.4.0",
     "lenis": "^1.3.26",
+    "lucide-react": "^1.60.0",
     "postprocessing": "^6.39.5",
     "react": "19.2.6",
     "react-dom": "19.2.6",

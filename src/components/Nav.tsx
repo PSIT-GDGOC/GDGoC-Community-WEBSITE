@@ -141,18 +141,30 @@ function AccountLink({ user }: { user: Profile | null }) {
   }
 
   const initial = user.name.trim().charAt(0).toUpperCase();
+  const isAdmin = ["admin", "superadmin", "organizer"].includes(user.role || "");
 
   return (
-    <a
-      href="#/profile"
-      aria-label="Your profile"
-      className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
-    >
-      <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
-        {initial}
-      </span>
-      <span className="hidden sm:inline">Profile</span>
-    </a>
+    <div className="flex items-center gap-2">
+      {isAdmin && (
+        <a
+          href="#/admin"
+          aria-label="Admin Dashboard"
+          className="hard-button inline-flex items-center bg-gyellow px-2.5 py-1.5 font-display text-xs font-bold text-ink border-2 border-ink shadow-[2px_2px_0_#202124]"
+        >
+          <span>Admin</span>
+        </a>
+      )}
+      <a
+        href="#/profile"
+        aria-label="Your profile"
+        className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
+      >
+        <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
+          {initial}
+        </span>
+        <span className="hidden sm:inline">Profile</span>
+      </a>
+    </div>
   );
 }
 
@@ -368,6 +380,18 @@ export default function Nav() {
                     location.hash = user ? "#/profile" : "#/login";
                   }}
                 />
+                {user && ["admin", "superadmin", "organizer"].includes(user.role || "") && (
+                  <MenuRow
+                    index="10"
+                    label="Admin Console"
+                    desc="events, projects & attendance"
+                    color="gyellow"
+                    onClick={() => {
+                      setOpen(false);
+                      location.hash = "#/admin";
+                    }}
+                  />
+                )}
               </nav>
 
               {/* status strip */}

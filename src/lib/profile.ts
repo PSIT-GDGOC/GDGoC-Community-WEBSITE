@@ -17,6 +17,7 @@ export const YEARS = [1, 2, 3, 4];
 export type Profile = {
   name: string;
   email: string;
+  role?: string;
   branch?: string;
   year?: number;
   bio?: string;
