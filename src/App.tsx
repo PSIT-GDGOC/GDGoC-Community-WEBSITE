@@ -20,6 +20,7 @@ import Tickets from "./components/Tickets";
 import TicketDetail from "./components/TicketDetail";
 import EventsPage from "./components/EventsPage";
 import EventDetail from "./components/EventDetail";
+import AdminDashboard from "./components/admin/AdminDashboard";
 import PageWipe, { usePageWipe } from "./components/PageWipe";
 import DeckTracker from "./components/DeckTracker";
 import DeckWorld from "./components/world/DeckWorld";
@@ -39,6 +40,7 @@ export default function App() {
     "#/login": Auth,
     "#/tickets": Tickets,
     "#/events": EventsPage,
+    "#/admin": AdminDashboard,
   };
   const { shownHash, wipeId } = usePageWipe(hash);
   const cinematic = useCinematic();
@@ -49,6 +51,9 @@ export default function App() {
   }
   if (route.startsWith("#/events/")) {
     page = EventDetail;
+  }
+  if (route.startsWith("#/admin")) {
+    page = AdminDashboard;
   }
 
   useEffect(() => {
@@ -90,9 +95,10 @@ export default function App() {
   let content: ReactNode;
   if (page) {
     const Page = page;
+    const isAdmin = page === AdminDashboard;
     content = (
       <div className="paper-ground min-h-screen bg-bg font-body text-ink">
-        <Nav key={`nav-${route}`} />
+        {!isAdmin && <Nav key={`nav-${route}`} />}
         <Page key={`page-${route}`} />
         <Cursor />
       </div>
@@ -101,10 +107,6 @@ export default function App() {
     content = (
       <MotionConfig reducedMotion="user">
         <div className="relative min-h-screen bg-bg font-body text-ink">
-          {/* No page-wide starfield here: the universe belongs to the hero
-             alone (it owns and pauses the canvas), and the sections below
-             are the paper world. A full-page copy would paint 61 MB of
-             bitmap under opaque backgrounds for nothing. */}
           {cinematic && <DeckWorld />}
           <Nav />
           <main className="relative z-[1]">

@@ -55,8 +55,8 @@ The **Features** section below describes the full plan. This table shows what is
 | My Tickets: wallet, ticket page, QR code | ✅ Built | #7 → PR #14 |
 | Event listing and registration (creates tickets) | 🔜 Planned | #6 |
 | Member dashboard | 🔜 Planned | #5 |
-| Admin panel and QR attendance scanner | 🔜 Planned | #8 |
-| Projects page | 🔜 Planned | — |
+| Admin panel and QR attendance scanner | ✅ Built | Issue #5883403485 (See [docs/ADMIN_DASHBOARD.md](docs/ADMIN_DASHBOARD.md)) |
+| Projects management & APIs | ✅ Built | Issue #5883403485 |
 | Password recovery, refresh tokens, email verification | 🔜 Planned | — |
 
 **PR merge order:** #11 (profile, issue #9) → #10 (auth, issue #4) → #12 (UI, issue #1) → #13 (homepage, issue #3) → #14 (tickets, issue #7). Each builds on the one before.

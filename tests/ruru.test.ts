@@ -362,7 +362,7 @@ ok("D/s and D/s^2 convert through speedScale exactly");
 
 /* ---------------- identity module ---------------- */
 
-const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const ROOT = decodeURIComponent(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 const walk = (dir: string, out: string[] = []): string[] => {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
