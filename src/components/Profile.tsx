@@ -96,9 +96,20 @@ export default function Profile() {
       <PageHeader tag="Member area" title="Your profile" color="gblue">
         Your member card, account details and security settings in one place.
       </PageHeader>
-      <a href="#/tickets" className="hard-button mt-6 inline-block bg-gyellow px-4 py-2 font-display text-sm font-bold">
-        My tickets →
-      </a>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <a href="#/tickets" className="hard-button inline-block bg-gyellow px-4 py-2 font-display text-sm font-bold">
+          My tickets →
+        </a>
+        {user?.role === "admin" && (
+          <a
+            href="#/admin"
+            className="hard-button inline-flex items-center gap-1.5 border-2 border-ink bg-gred px-4 py-2 font-display text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)]"
+          >
+            <span>⚡</span>
+            <span>Admin Console →</span>
+          </a>
+        )}
+      </div>
 
       {status === "loading" && (
         <p className="mt-10" role="status">
@@ -149,7 +160,16 @@ function EditProfile({ user, onSaved }: { user: P; onSaved: (u: P) => void }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
-  const set = (patch: Partial<ProfileEdit>) => setForm({ ...form, ...patch });
+  const set = (patch: Partial<ProfileEdit>) => setForm((prev) => ({ ...prev, ...patch }));
+
+  useEffect(() => {
+    setForm({
+      name: user.name,
+      branch: user.branch ?? "",
+      year: user.year,
+      bio: user.bio ?? "",
+    });
+  }, [user]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -176,12 +196,18 @@ function EditProfile({ user, onSaved }: { user: P; onSaved: (u: P) => void }) {
   };
 
   const cancel = () => {
-    setForm(initial);
+    setForm({
+      name: user.name,
+      branch: user.branch ?? "",
+      year: user.year,
+      bio: user.bio ?? "",
+    });
     setEditing(false);
     setMsg(null);
   };
 
-  const startEditing = () => {
+  const startEditing = (e: React.MouseEvent) => {
+    e.preventDefault();
     setEditing(true);
     setMsg(null);
   };
@@ -251,15 +277,15 @@ function EditProfile({ user, onSaved }: { user: P; onSaved: (u: P) => void }) {
         <div className="flex flex-wrap gap-3 sm:col-span-2">
           {editing ? (
             <>
-              <button type="submit" className={button} disabled={saving}>
+              <button key="save-button" type="submit" className={button} disabled={saving}>
                 {saving ? "Saving…" : "Save changes"}
               </button>
-              <button type="button" className={ghost} onClick={cancel} disabled={saving}>
+              <button key="cancel-button" type="button" className={ghost} onClick={cancel} disabled={saving}>
                 Cancel
               </button>
             </>
           ) : (
-            <button type="button" className={button} onClick={startEditing}>
+            <button key="edit-button" type="button" className={button} onClick={startEditing}>
               Edit profile
             </button>
           )}

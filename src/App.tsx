@@ -20,6 +20,7 @@ import Tickets from "./components/Tickets";
 import TicketDetail from "./components/TicketDetail";
 import EventsPage from "./components/EventsPage";
 import EventDetail from "./components/EventDetail";
+import Admin from "./components/Admin";
 import PageWipe, { usePageWipe } from "./components/PageWipe";
 import DeckTracker from "./components/DeckTracker";
 import DeckWorld from "./components/world/DeckWorld";
@@ -39,6 +40,7 @@ export default function App() {
     "#/login": Auth,
     "#/tickets": Tickets,
     "#/events": EventsPage,
+    "#/admin": Admin,
   };
   const { shownHash, wipeId } = usePageWipe(hash);
   const cinematic = useCinematic();

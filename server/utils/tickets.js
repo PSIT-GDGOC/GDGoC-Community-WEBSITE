@@ -1,4 +1,4 @@
-import { eventEndsAt } from "../../src/lib/tickets.ts";
+import { eventEndsAt } from "./domain.js";
 
 export const TICKET_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 

@@ -5,3 +5,18 @@ shots
 .tmp
 *.local
 .DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Backups and server build artifacts
+server-ts-backup/
+server/node_modules/
+server/dist/
+
+# Editor and IDE directories
+.vscode/
+.idea/
+Thumbs.db

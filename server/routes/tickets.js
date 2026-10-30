@@ -48,4 +48,39 @@ router.get("/:ticketId", async (req, res) => {
   res.json({ ...ticket, qrSvg, meetingUrl });
 });
 
+router.post("/:ticketId/check-in", async (req, res) => {
+  const notFound = { message: "Ticket not found." };
+  const { ticketId } = req.params;
+
+  if (!TICKET_ID_PATTERN.test(ticketId)) {
+    return res.status(404).json(notFound);
+  }
+
+  const registration = await Registration.findOne({ ticketId }).populate("event");
+  if (!registration || !registration.event) {
+    return res.status(404).json(notFound);
+  }
+
+  if (registration.status === "cancelled") {
+    return res.status(409).json({ message: "This registration was cancelled." });
+  }
+
+  if (registration.attendedAt) {
+    return res.status(200).json({
+      message: "Ticket already checked in.",
+      ticketId,
+      attendedAt: registration.attendedAt,
+    });
+  }
+
+  registration.attendedAt = new Date();
+  await registration.save();
+
+  return res.status(200).json({
+    message: "Attendance recorded successfully.",
+    ticketId,
+    attendedAt: registration.attendedAt,
+  });
+});
+
 export default router;

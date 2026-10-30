@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import User, { publicUser } from "../models/User.js";
 import { clearAuthFailures, COOKIE, limitFailures, recordAuthFailure, setSession } from "../middleware/auth.js";
-import { signupErrors } from "../../src/lib/profile.ts";
+import { signupErrors } from "../utils/domain.js";
 
 const router = Router();
 const DUPLICATE_KEY = 11000;
