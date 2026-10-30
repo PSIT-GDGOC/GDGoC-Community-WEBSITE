@@ -80,7 +80,7 @@ function EventsHeader() {
         <ScrambleHeading text="Past drops & sessions" className="mt-5 text-h2 heading-shadow heading-shadow-green" />
       </div>
       <p className="max-w-sm text-[15px] leading-relaxed text-ink/80">
-        Six cards from the deck we've played so far - workshops, study jams, watch parties and PR nights.
+        Cards from the deck we've played so far - open source drives, workshops, study jams, watch parties and PR nights.
         Tap, hover or tab to any card for its session report.{" "}
         <a href="#/events" className="font-bold text-ink underline">
           See upcoming events →

@@ -86,11 +86,11 @@ export interface Notice {
 export const NOTICES: Notice[] = [
   {
     color: "gyellow",
-    title: "Open Source October starts Oct 8",
-    body: "Month-long open contributions, Oct 8 to Oct 31, 2026. Pick an issue, open a pull request, and add your name to the campus commit history.",
+    title: "Open Source October wrapped",
+    body: "24 days, 140+ merged PRs. Huge thanks to all contributors and mentors. Check the event log for the wrap-up.",
     pinnedBy: "Events lead",
-    date: "Sep 12",
-    link: { label: "See event brief", target: "hacktober" },
+    date: "Nov 01",
+    link: { label: "See the log", target: "events" },
   },
   {
     color: "gblue",
@@ -124,10 +124,10 @@ export const NOTICES: Notice[] = [
 ];
 
 export const UPCOMING = [
-  { date: "Oct 08", label: "Open Source October begins", color: "gyellow" as GColor },
-  { date: "Oct 24", label: "Cloud Study Jam #2", color: "gblue" as GColor },
   { date: "Nov 07", label: "Android office hours", color: "ggreen" as GColor },
+  { date: "Nov 21", label: "Cloud Study Jam #3", color: "gblue" as GColor },
   { date: "Dec 14", label: "DevFest watch party", color: "gred" as GColor },
+  { date: "Jan 16", label: "Winter Code Sprint", color: "gyellow" as GColor },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -252,6 +252,17 @@ export interface PastEvent {
 }
 
 export const EVENTS: PastEvent[] = [
+  {
+    title: "Open Source October",
+    tag: "Open Source",
+    color: "ggreen",
+    date: "Oct 08 – 31, 2026",
+    turnout: "180+ devs",
+    note: "Month-long contribution drive. 24 days of open source, good-first-issues and community PRs.",
+    detail: "Outcome: 142 pull requests merged across campus and open source repos.",
+    image:
+      "https://images.pexels.com/photos/1181263/pexels-photo-1181263.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  },
   {
     title: "Git & GitHub Bootcamp",
     tag: "Workshop",
