@@ -36,8 +36,8 @@ assert.equal(emailError("a@b.co"), null);
 assert.ok(emailError("a b@c.d"));
 
 assert.equal(safeNext("/events"), "/events");
-assert.equal(safeNext("//evil.com"), "/profile");
-assert.equal(safeNext("https://evil.com"), "/profile");
-assert.equal(safeNext(null), "/profile");
+assert.equal(safeNext("//evil.com"), "/dashboard");
+assert.equal(safeNext("https://evil.com"), "/dashboard");
+assert.equal(safeNext(null), "/dashboard");
 
 console.log("profile: all checks passed");

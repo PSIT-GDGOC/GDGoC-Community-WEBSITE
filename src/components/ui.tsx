@@ -691,7 +691,7 @@ export function PageHeader({
   return (
     <header>
       <SectionTag label={tag} color={color} />
-      <h1 className={cn("mt-5 text-h2 heading-shadow", HEADING_SHADOW[color])}>{title}</h1>
+      <h1 className={cn("mt-5 text-h2 break-words heading-shadow", HEADING_SHADOW[color])}>{title}</h1>
       {children && <div className="mt-4 max-w-xl text-[15px] leading-relaxed text-ink/80">{children}</div>}
     </header>
   );

@@ -453,6 +453,34 @@ test("events: meeting links stay private and members can cancel and register aga
   assert.equal(late.data.message, "This event has already started, so the registration can't be cancelled.");
 });
 
+test("dashboard data is only served to the signed-in member", options, async () => {
+  const stamp = Date.now();
+  const member = await call("/auth/register", {
+    method: "POST",
+    body: { name: "Dash Member", email: `dash${stamp}@test.dev`, password: "secret123" },
+  });
+
+  await mongoose.connect(process.env.MONGO_URI);
+  const user = await mongoose.connection.collection("users").findOne({ email: `dash${stamp}@test.dev` });
+  await mongoose.disconnect();
+  const expired = jwt.sign({ id: user._id, v: 0 }, process.env.JWT_SECRET, { expiresIn: -10 });
+  const stale = jwt.sign({ id: user._id, v: 5 }, process.env.JWT_SECRET);
+
+  for (const cookie of [undefined, "token=forged", `token=${expired}`, `token=${stale}`]) {
+    assert.equal((await call("/users/me", { cookie })).status, 401);
+    assert.equal((await call("/tickets", { cookie })).status, 401);
+  }
+
+  const me = await call("/users/me", { cookie: member.cookie });
+  assert.equal(me.data.email, `dash${stamp}@test.dev`);
+  assert.equal(me.data.password, undefined);
+  assert.deepEqual((await call("/tickets", { cookie: member.cookie })).data.tickets, []);
+
+  const events = await call("/events");
+  assert.equal(events.status, 200);
+  assert.ok(!JSON.stringify(events.data).includes(`dash${stamp}@test.dev`));
+});
+
 test("state-changing requests from other sites are blocked", options, async () => {
   const res = await fetch(`${API}/auth/logout`, {
     method: "POST",

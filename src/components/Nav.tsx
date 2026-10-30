@@ -155,14 +155,14 @@ function AccountLink({ user }: { user: Profile | null }) {
         </a>
       )}
       <a
-        href="#/profile"
-        aria-label="Your profile"
+        href="#/dashboard"
+        aria-label="Your dashboard"
         className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
       >
         <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
           {initial}
         </span>
-        <span className="hidden sm:inline">Profile</span>
+        <span className="hidden sm:inline">Dashboard</span>
       </a>
     </div>
   );
@@ -372,12 +372,12 @@ export default function Nav() {
                 />
                 <MenuRow
                   index="09"
-                  label={user ? "Your profile" : "Log in"}
-                  desc={user ? "account and settings" : "members area"}
+                  label={user ? "Your dashboard" : "Log in"}
+                  desc={user ? "tickets, events and account" : "members area"}
                   color="gblue"
                   onClick={() => {
                     setOpen(false);
-                    location.hash = user ? "#/profile" : "#/login";
+                    location.hash = user ? "#/dashboard" : "#/login";
                   }}
                 />
                 {user?.role === "admin" && (
