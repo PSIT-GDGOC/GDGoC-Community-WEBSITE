@@ -4,6 +4,7 @@ import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import ticketRoutes from "./routes/tickets.js";
 import eventRoutes from "./routes/events.js";
+import adminRoutes from "./routes/admin.js";
 import User from "./models/User.js";
 
 const missing = ["MONGO_URI", "JWT_SECRET"].filter((name) => !process.env[name]);
@@ -107,12 +108,20 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/events", eventRoutes);
+app.use("/api/admin", adminRoutes);
+
+// Attendance shortcut for backward-compatible README spec
+app.post(["/api/attendance/scan", "/api/v1/attendance/scan"], (req, res, next) => {
+  req.url = "/attendance/scan";
+  adminRoutes(req, res, next);
+});
 
 // Mount /api/v1 aliases for backward compatibility
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
 app.use("/api/v1/events", eventRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // 404 handler for API routes
 app.use("/api", (req, res) => {

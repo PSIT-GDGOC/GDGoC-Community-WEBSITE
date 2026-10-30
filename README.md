@@ -53,9 +53,9 @@ The **Features** section below describes the full plan. This table shows what is
 | Sign up / log in, sessions, roles | ✅ Built | #4 → PR #10 |
 | Profile, account settings, password change | ✅ Built | #9 → PR #11 |
 | My Tickets: wallet, ticket page, QR code | ✅ Built | #7 → PR #14 |
-| Event listing and registration (creates tickets) | 🔜 Planned | #6 |
+| Event listing and registration (creates tickets) | ✅ Built | #6 |
 | Member dashboard | 🔜 Planned | #5 |
-| Admin panel and QR attendance scanner | 🔜 Planned | #8 |
+| Admin panel and QR attendance scanner | ✅ Built | #8 |
 | Projects page | 🔜 Planned | — |
 | Password recovery, refresh tokens, email verification | 🔜 Planned | — |
 
@@ -416,14 +416,14 @@ Pick an area, open an issue, and get it assigned.
 - [ ] Email templates for ticket confirmation
 
 ### 🔴 Hard
-- [ ] Authentication (JWT access + refresh, role-based routes)
-- [ ] Event registration with automatic QR ticket generation
-- [ ] "My Tickets" page with ticket download
-- [ ] Admin dashboard: live registrations table, CSV export
-- [ ] Admin QR scanner that marks attendance (single-use tickets)
-- [ ] Rate limiting, input sanitisation and security hardening
-- [ ] Unit and API tests
-- [ ] CI pipeline (lint + build on every PR)
+- [x] Authentication (JWT access, role-based routes)
+- [x] Event registration with automatic QR ticket generation
+- [x] "My Tickets" page with ticket download
+- [x] Admin dashboard: live registrations table, CSV export
+- [x] Admin QR scanner that marks attendance (single-use tickets)
+- [x] Rate limiting, input sanitisation and security hardening
+- [x] Unit and API tests
+- [x] CI pipeline (lint + build on every PR)
 
 ### 🚀 Stretch goals
 - [ ] 📱 Mobile application (React Native / Flutter) using the same APIs

@@ -45,6 +45,21 @@ export async function requireAuth(req, res, next) {
   next();
 }
 
+export async function requireAdmin(req, res, next) {
+  const user = await userFromRequest(req);
+
+  if (!user) {
+    return res.status(401).json({ message: "Please log in." });
+  }
+
+  if (user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required." });
+  }
+
+  req.user = user;
+  next();
+}
+
 export async function optionalAuth(req, res, next) {
   req.user = await userFromRequest(req);
   next();
