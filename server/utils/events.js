@@ -1,4 +1,4 @@
-import { eventStatus, registrationDeadline } from "../../src/lib/events.ts";
+import { eventStatus, registrationDeadline } from "./domain.js";
 
 export function seatsLeft(event) {
   if (!event.capacity) {

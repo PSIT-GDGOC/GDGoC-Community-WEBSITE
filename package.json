@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run --environment jsdom tests/auth.test.tsx tests/homepage.test.tsx tests/tickets.test.tsx tests/events.test.tsx tests/dashboard.test.tsx tests/review.test.tsx",
+    "test": "vitest run --environment jsdom tests/auth.test.tsx tests/homepage.test.tsx tests/tickets.test.tsx tests/events.test.tsx tests/dashboard.test.tsx tests/review.test.tsx tests/admin.test.tsx",
     "test:scripts": "tsx tests/profile.test.ts && tsx tests/oso.test.ts && tsx tests/ruru.test.ts && tsx tests/statuscard.test.ts",
     "check": "tsc --noEmit -p . && npm test && npm run test:scripts && npm run build"
   },

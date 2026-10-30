@@ -1,4 +1,4 @@
-import { before, test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
@@ -14,6 +14,15 @@ const options = {
 const email = `t${Date.now()}@test.dev`;
 
 before(async () => {
+  if (options.skip) {
+    return;
+  }
+  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connection.collection("authfailures").deleteMany({});
+  await mongoose.disconnect();
+});
+
+after(async () => {
   if (options.skip) {
     return;
   }

@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { BRANCHES, YEARS } from "../../src/lib/profile.ts";
+import { BRANCHES, YEARS } from "../utils/domain.js";
 
 const userSchema = new mongoose.Schema(
   {

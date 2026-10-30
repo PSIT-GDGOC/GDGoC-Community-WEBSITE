@@ -103,8 +103,8 @@ export default function MemberCard({
         <CornerIndex initials={initials} color={color} flipped />
 
         <div className="relative flex flex-1 flex-col items-center justify-center px-8 pt-6 text-center">
-          <p className="font-mono text-[10px] font-semibold tracking-[0.25em] text-muted uppercase">
-            GDGoC PSIT · Member
+          <p className={`font-mono text-[10px] font-semibold tracking-[0.25em] uppercase ${user.role === "admin" ? "text-gred font-bold" : "text-muted"}`}>
+            GDGoC PSIT · {user.role === "admin" ? "⚡ Administrator" : "Member"}
           </p>
           <span
             className="mt-4 grid h-20 w-20 place-items-center border-[3px] border-ink font-display text-3xl font-extrabold shadow-[4px_4px_0_var(--color-ink)]"

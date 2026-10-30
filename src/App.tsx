@@ -23,6 +23,7 @@ import EventDetail from "./components/EventDetail";
 import Dashboard from "./components/Dashboard";
 import ProjectsPage from "./components/ProjectsPage";
 import NotFound from "./components/NotFound";
+import Admin from "./components/Admin";
 import PageWipe, { usePageWipe } from "./components/PageWipe";
 import DeckTracker from "./components/DeckTracker";
 import DeckWorld from "./components/world/DeckWorld";
@@ -44,6 +45,7 @@ export default function App() {
     "#/events": EventsPage,
     "#/dashboard": Dashboard,
     "#/projects": ProjectsPage,
+    "#/admin": Admin,
   };
   const { shownHash, wipeId } = usePageWipe(hash);
   const cinematic = useCinematic();

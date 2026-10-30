@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import User, { publicUser } from "../models/User.js";
 import { requireAuth, setSession } from "../middleware/auth.js";
-import { validatePassword, validateProfile } from "../../src/lib/profile.ts";
+import { validatePassword, validateProfile } from "../utils/domain.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -15,10 +15,10 @@ router.patch("/me", async (req, res) => {
   const { name, branch, year, bio } = req.body ?? {};
 
   const edit = {
-    name: String(name ?? ""),
-    branch: branch || "",
-    year: Number(year) || undefined,
-    bio: String(bio ?? ""),
+    name: name !== undefined ? String(name) : req.user.name,
+    branch: branch !== undefined ? String(branch) : req.user.branch || "",
+    year: year !== undefined ? (Number(year) || undefined) : req.user.year,
+    bio: bio !== undefined ? String(bio) : req.user.bio || "",
   };
 
   const err = validateProfile(edit);

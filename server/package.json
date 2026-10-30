@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=.env index.js",
     "start": "node --env-file-if-exists=.env index.js",
-    "test": "node --env-file-if-exists=.env --test api.test.js utils/tickets.test.js",
+    "test": "node --env-file-if-exists=.env --test --test-force-exit api.test.js utils/tickets.test.js edge.test.js admin.test.js",
+    "test:edge": "node --env-file-if-exists=.env --test --test-force-exit edge.test.js",
     "seed:tickets": "node --env-file-if-exists=.env seed-tickets.js",
-    "seed:events": "node --env-file-if-exists=.env seed-events.js"
+    "seed:events": "node --env-file-if-exists=.env seed-events.js",
+    "seed:admin": "node --env-file-if-exists=.env seed-admin.js"
   },
   "engines": {
     "node": ">=22.18"

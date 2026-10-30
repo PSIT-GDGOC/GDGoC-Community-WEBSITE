@@ -143,16 +143,28 @@ function AccountLink({ user }: { user: Profile | null }) {
   const initial = user.name.trim().charAt(0).toUpperCase();
 
   return (
-    <a
-      href="#/dashboard"
-      aria-label="Your dashboard"
-      className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
-    >
-      <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
-        {initial}
-      </span>
-      <span className="hidden sm:inline">Dashboard</span>
-    </a>
+    <div className="flex items-center gap-2">
+      {user.role === "admin" && (
+        <a
+          href="#/admin"
+          aria-label="Admin console"
+          className="hard-button hidden sm:inline-flex items-center gap-1.5 border-2 border-ink bg-gred px-2.5 py-1 font-mono text-xs font-bold text-white shadow-[2px_2px_0_var(--color-ink)] hover:bg-gred/90"
+        >
+          <span>⚡</span>
+          <span>Admin</span>
+        </a>
+      )}
+      <a
+        href="#/dashboard"
+        aria-label="Your dashboard"
+        className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
+      >
+        <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
+          {initial}
+        </span>
+        <span className="hidden sm:inline">Dashboard</span>
+      </a>
+    </div>
   );
 }
 
@@ -368,6 +380,19 @@ export default function Nav() {
                     location.hash = user ? "#/dashboard" : "#/login";
                   }}
                 />
+                {user?.role === "admin" && (
+                  <MenuRow
+                    index="⚡"
+                    label="Admin Console"
+                    desc="events, roster & QR scanner"
+                    color="gred"
+                    onClick={() => {
+                      setOpen(false);
+                      location.hash = "#/admin";
+                    }}
+                    emphasized
+                  />
+                )}
               </nav>
 
               {/* status strip */}
