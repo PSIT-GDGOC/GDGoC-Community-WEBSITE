@@ -53,13 +53,13 @@ The **Features** section below describes the full plan. This table shows what is
 | Sign up / log in, sessions, roles | ✅ Built | #4 → PR #10 |
 | Profile, account settings, password change | ✅ Built | #9 → PR #11 |
 | My Tickets: wallet, ticket page, QR code | ✅ Built | #7 → PR #14 |
-| Event listing and registration (creates tickets) | ✅ Built | #6 |
-| Member dashboard | 🔜 Planned | #5 |
-| Admin panel and QR attendance scanner | ✅ Built | #8 |
-| Projects page | 🔜 Planned | — |
+| Event listing and registration (creates tickets) | ✅ Built | #6 → PR #15 |
+| Member dashboard (events, projects, registrations) | ✅ Built | #5 → PR #16 |
+| Admin panel and QR attendance scanner | ✅ Built | #8 → PR #18 |
+| Projects showcase page | ✅ Built | #5 → PR #16 |
 | Password recovery, refresh tokens, email verification | 🔜 Planned | — |
 
-**PR merge order:** #11 (profile, issue #9) → #10 (auth, issue #4) → #12 (UI, issue #1) → #13 (homepage, issue #3) → #14 (tickets, issue #7). Each builds on the one before.
+**Key milestones:** PR #10 (auth) → PR #11 (profile) → PR #12 & #13 (UI & homepage) → PR #14 (tickets) → PR #15 (events) → PR #16 (member dashboard & projects) → PR #18 (admin panel & QR scanner). All core features are merged and verified on `main`.
 
 ---
 
@@ -155,33 +155,45 @@ flowchart TD
 ## 📁 Project Structure
 
 ```
-gdgoc-psit/
-├── client/                      # React frontend
-│   └── src/
-│       ├── assets/              # images, lottie files, fonts
-│       ├── components/
-│       │   ├── common/          # Navbar, Footer, Button, Loader, Cursor
-│       │   ├── landing/         # Hero, About, EventsPreview, ProjectsPreview, Team, JoinCTA
-│       │   ├── events/          # EventCard, Ticket
-│       │   ├── projects/        # ProjectCard, ProjectFilters
-│       │   └── admin/           # Dashboard widgets, QRScanner, Tables
-│       ├── pages/               # Home, Events, EventDetails, MyTickets, Projects, Login, admin/
-│       ├── hooks/
-│       ├── store/               # Zustand stores
-│       ├── services/            # Axios API layer
-│       └── utils/
+GDGoC-Community-WEBSITE/
+├── src/                         # React 19 + TypeScript frontend
+│   ├── components/              # UI components
+│   │   ├── intro/               # 3D intro card & loader
+│   │   ├── world/               # Three.js 3D DeckWorld scene
+│   │   ├── Admin.tsx            # Admin dashboard, event manager & QR scanner
+│   │   ├── Dashboard.tsx        # Member area dashboard & registrations
+│   │   ├── EventsPage.tsx       # Searchable events catalog & filters
+│   │   ├── EventDetail.tsx      # Event info & one-click RSVP
+│   │   ├── Tickets.tsx          # Ticket wallet & QR passes
+│   │   ├── ProjectsPage.tsx     # Chapter projects showcase
+│   │   ├── Profile.tsx          # Account settings & credentials
+│   │   ├── Nav.tsx & Footer.tsx # Neo-brutalist navigation & footer
+│   │   └── ui.tsx               # Reusable buttons, badges, pills & tags
+│   ├── data/                    # Static content, team, and chapter copy
+│   ├── lib/                     # Business logic, API client, auth & crypto
+│   ├── App.tsx                  # Hash router and page wipe transitions
+│   ├── index.css                # Neo-brutalist styling & Tailwind tokens
+│   └── main.tsx                 # Client entrypoint
 │
-├── server/                      # Express backend
-│   ├── config/                  # db, cloudinary, mailer
-│   ├── controllers/
-│   ├── middleware/              # auth, role check, error handler, rate limit
-│   ├── models/                  # User, Event, Registration, Project, TeamMember
-│   ├── routes/
-│   └── utils/                   # ticket + QR helpers, email templates
+├── server/                      # Express 5 + Node.js backend
+│   ├── middleware/              # Auth, admin guard, CSRF & rate limiters
+│   ├── models/                  # User, Event, Registration schemas
+│   ├── routes/                  # /auth, /users, /events, /tickets, /admin
+│   ├── utils/                   # Ticket generation, QR encoding & sanitizers
+│   ├── seed-admin.js            # Superadmin seeder script
+│   ├── seed-events.js           # Sample events seeder script
+│   └── index.js                 # API server entrypoint (PORT 5000)
 │
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── LICENSE
+├── tests/                       # Vitest component & boundary test suites
+│   ├── admin.test.tsx           # Admin panel & QR validation tests
+│   ├── dashboard.test.tsx       # Member dashboard & privacy tests
+│   ├── events.test.tsx          # Event filtering & RSVP flow tests
+│   ├── tickets.test.tsx         # Ticket state & QR tests
+│   ├── auth.test.tsx            # Form validation & session tests
+│   └── *.test.ts                # Standalone physics & domain checks
+│
+├── package.json                 # Frontend dependencies & root check scripts
+├── vite.config.ts               # Vite bundler & /api proxy configuration
 └── README.md
 ```
 
@@ -203,25 +215,27 @@ gdgoc-psit/
 
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| POST | `/api/auth/register` | Create account | Public |
-| POST | `/api/auth/login` | Login | Public |
-| POST | `/api/auth/logout` | Logout | Member |
-| GET / PATCH | `/api/users/me` | View / edit own profile | Member |
-| PATCH | `/api/users/me/password` | Change password (signs out other devices) | Member |
-| GET | `/api/events` | List published events | Public |
-| GET | `/api/events/:id` | Event details, plus my registration when logged in | Public |
-| POST | `/api/events` | Create event | Admin |
-| PUT / DELETE | `/api/events/:id` | Update / delete event | Admin |
-| POST | `/api/events/:id/register` | Register and get a ticket | Member |
-| POST | `/api/events/:id/cancel` | Cancel my registration (before the event starts) | Member |
-| GET | `/api/tickets` | My tickets (only the logged-in member's) | Member |
-| GET | `/api/tickets/:ticketId` | One of my tickets, with its QR code when valid | Member |
-| POST | `/api/attendance/scan` | Verify QR and mark attendance | Admin |
-| GET | `/api/events/:id/registrations` | Registrations / CSV export | Admin |
-| GET | `/api/projects` | List projects | Member |
-| POST / PUT / DELETE | `/api/projects/:id?` | Manage projects | Admin |
-| PATCH | `/api/projects/:id/status` | Update project status | Admin |
-| GET | `/api/team` | List team members | Public |
+| `GET` | `/health` / `/api/health` | Service & MongoDB readiness health check | Public |
+| `POST` | `/api/auth/register` | Create a member account | Public |
+| `POST` | `/api/auth/login` | Log in and receive session cookie | Public |
+| `POST` | `/api/auth/logout` | Clear session cookie | Authenticated |
+| `GET` / `PATCH` | `/api/users/me` | Fetch / update authenticated profile | Member |
+| `PATCH` | `/api/users/me/password` | Change password (invalidates all other active tokens) | Member |
+| `GET` | `/api/events` | List all published events | Public |
+| `GET` | `/api/events/:id` | Event details, plus member registration state | Public / Member |
+| `POST` | `/api/events/:id/register` | Register for an event and generate ticket with QR | Member |
+| `POST` | `/api/events/:id/cancel` | Cancel registration and release seat | Member |
+| `GET` | `/api/tickets` | List tickets belonging to the signed-in member | Member |
+| `GET` | `/api/tickets/:ticketId` | Fetch ticket with dynamic SVG QR code | Member |
+| `GET` | `/api/admin/stats` | Chapter metrics (members, events, registrations, attendance rate) | Admin |
+| `GET` | `/api/admin/events` | Full event list including drafts and cancelled events | Admin |
+| `POST` | `/api/admin/events` | Create and publish a new event | Admin |
+| `PUT` | `/api/admin/events/:id` | Edit event details, capacity, and deadlines | Admin |
+| `DELETE` | `/api/admin/events/:id` | Permanently remove an event | Admin |
+| `GET` | `/api/admin/events/:id/registrations` | Attendee roster and registration export | Admin |
+| `GET` | `/api/admin/users` | List registered community members | Admin |
+| `PATCH` | `/api/admin/users/:id/role` | Promote or demote user role (`student` ↔ `admin`) | Admin |
+| `POST` | `/api/admin/attendance/scan` | Validate ticket QR code and mark single-use attendance | Admin |
 
 ### 🏠 Homepage content
 
@@ -452,81 +466,182 @@ Pick an area, open an issue, and get it assigned.
 
 ---
 
-## ⚙️ Local Setup
+## 👥 Roles, Access Control & Login Guide
+
+The platform implements role-based access control (RBAC) enforced simultaneously on the React hash-router frontend and the Express backend middleware (`requireAuth`, `requireAdmin`).
+
+### Role Permissions Matrix
+
+| Capability | Visitor / Guest | Student / Member (`student`) | Administrator (`admin`) |
+|---|:---:|:---:|:---:|
+| Explore Landing Page & 3D Interactive World | ✅ | ✅ | ✅ |
+| Browse Public Events & Search Catalog | ✅ | ✅ | ✅ |
+| View Chapter Projects Showcase (`/#/projects`) | ✅ | ✅ | ✅ |
+| RSVP / Register for Events (Generates Ticket QR) | ❌ *(Prompts Login)* | ✅ | ✅ |
+| Member Dashboard (`/#/dashboard`) & Registrations | ❌ | ✅ | ✅ |
+| Ticket Wallet & Download QR Pass (`/#/tickets`) | ❌ | ✅ | ✅ |
+| Profile & Security Management (`/#/profile`) | ❌ | ✅ | ✅ |
+| Red `⚡ Admin` Console Badge in Navigation Bar | ❌ | ❌ | ✅ |
+| Access Admin Console (`/#/admin`) | ❌ *(Redirects 404)* | ❌ *(Redirects 404)* | ✅ |
+| View Realtime Chapter Analytics & Attendance Rate | ❌ | ❌ | ✅ |
+| Create, Edit, Publish & Cancel Events | ❌ | ❌ | ✅ |
+| View Attendee Rosters & Export CSV Data | ❌ | ❌ | ✅ |
+| Promote / Demote Member Roles (`student` ↔ `admin`) | ❌ | ❌ | ✅ |
+| Gate Attendance QR Scanner (Camera & Manual Entry) | ❌ | ❌ | ✅ |
+
+---
+
+### How to Log In as Each Role
+
+#### 1. 🛡️ Administrator Role
+- **Direct Route**: [`/#/admin`](http://localhost:5173/#/admin) (or click the red `⚡ Admin` button in the top navigation bar when logged in).
+- **Default Superadmin Credentials**:
+  - **Email**: `admin@gdgoc.dev`
+  - **Password**: `Admin1234!`
+- **Capabilities**: Full access to chapter statistics, event lifecycle management, member roster table, user role toggle, and the physical event Gate Scanner.
+- **How to Create or Promote an Admin**:
+  - **CLI Seeder**: In `server/`, run `node --env-file=.env seed-admin.js`. This creates or updates the configured `SUPERADMIN_EMAIL` to role `admin`.
+  - **Admin Console UI**: Any logged-in admin can promote an existing member to `admin` with one click in the **User Management** tab at `/#/admin`.
+  - **API**: `PATCH /api/admin/users/:id/role` with `{ "role": "admin" }`.
+
+#### 2. 🎓 Student / Member Role
+- **Direct Route**: [`/#/dashboard`](http://localhost:5173/#/dashboard) (after login) or [`/#/login`](http://localhost:5173/#/login).
+- **How to Create a Member Account**:
+  - Open [`/#/login?mode=signup`](http://localhost:5173/#/login?mode=signup).
+  - Enter name, college email (`@psit.ac.in` recommended), and password (minimum 8 characters with at least one letter and one number).
+  - New accounts default to the `student` role.
+- **Capabilities**: Personalized dashboard with greeting, real-time ticket counts, missing profile prompts, one-click event registrations, and the ticket wallet.
+
+#### 3. 🌐 Visitor / Guest Role
+- Unauthenticated visitors can browse all public sections (`/#/`, `/#/events`, `/#/projects`).
+- Clicking "Register" on an event or clicking the navigation account button automatically redirects to `/#/login?next=/events/:id` so the visitor seamlessly resumes their action upon authentication.
+
+---
+
+## ⚙️ Local Setup & Running Guide
 
 ### Prerequisites
-- Node.js 22.18 or newer and npm (the version is pinned in `.nvmrc`; run `nvm use`). The API runs the shared TypeScript validation in `src/lib` directly, which needs Node 22.18+.
-- A MongoDB Atlas cluster or local MongoDB
-- (Optional) Cloudinary and SMTP credentials; the app should still run without them
+- **Node.js**: `v22.18+` (or latest LTS; matching `.nvmrc`). Shared validation code in `src/lib/` is executed natively by Node.
+- **npm**: `v10+`
+- **MongoDB**: Local MongoDB instance (`mongodb://127.0.0.1:27017/gdgoc_community`) or a MongoDB Atlas connection URI.
 
-### Backend
+---
+
+### Step 1: Start the Backend Server
+
 ```bash
 cd server
 npm install
-cp .env.example .env     # fill in the values
-npm run dev
+cp .env.example .env     # or populate your server/.env directly
 ```
 
-**`server/.env`**
+**`server/.env` template:**
 ```env
 PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
-JWT_REFRESH_SECRET=your_refresh_secret
+MONGO_URI=mongodb://127.0.0.1:27017/gdgoc_community
+JWT_SECRET=super_secret_jwt_gdgoc_official_token_2026_dev_key
 CLIENT_URL=http://localhost:5173
-
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASS=
+NODE_ENV=development
+SUPERADMIN_EMAIL=admin@gdgoc.dev
+SUPERADMIN_PASSWORD=Admin1234!
+SUPERADMIN_NAME=GDGoC Lead Admin
 ```
 
-### Frontend
+#### Seed Initial Data
 ```bash
-cd client
-npm install
-cp .env.example .env
+# Seed the default superadmin account (admin@gdgoc.dev / Admin1234!)
+node --env-file=.env seed-admin.js
+
+# Seed sample events (workshops, study jams, watch parties)
+node --env-file=.env seed-events.js
+```
+
+#### Run the API Server
+```bash
 npm run dev
 ```
+*The API starts on **`http://localhost:5000`** with health check at **`http://localhost:5000/health`**.*
 
-**`client/.env`**
-```env
-VITE_API_URL=http://localhost:5000/api
+---
+
+### Step 2: Start the Frontend Client
+
+In a new terminal window at the **root of the repository** (do not `cd client`):
+
+```bash
+# Install frontend dependencies
+npm install
+
+# Start Vite dev server with Hot Module Replacement
+npm run dev
 ```
+*The frontend opens at **`http://localhost:5173`** (or `http://localhost:5174` if 5173 is occupied). Vite automatically proxies all `/api/*` network requests to `http://localhost:5000`.*
 
-The app runs at **http://localhost:5173**.
+---
 
-### Scripts
+### Repository Scripts
 
 | Location | Command | Purpose |
 |---|---|---|
-| repo root | `npm run dev` | Start the Vite dev server |
-| repo root | `npm run build` | Production build |
-| repo root | `npm test` | Frontend tests (Vitest) |
-| repo root | `npm run test:scripts` | Standalone checks: `tests/profile.test.ts`, `oso`, `ruru`, `statuscard` |
-| repo root | `npm run check` | Typecheck + all frontend tests + standalone checks + build |
-| `server` | `npm run dev` | Start the API and restart on changes (`node --watch`) |
-| `server` | `npm start` | Start the API in production |
-| `server` | `npm test` | API tests (local database only) |
-| `server` | `npm run seed:events` | Add published sample events (marked "Sample:") |
+| **repo root** | `npm run dev` | Start Vite dev server with proxy to backend |
+| **repo root** | `npm run build` | Production bundle with `vite-plugin-singlefile` inlining |
+| **repo root** | `npm test` | Run all 7 frontend Vitest test suites |
+| **repo root** | `npm run test:scripts` | Standalone validation scripts: `profile`, `oso`, `ruru`, `statuscard` |
+| **repo root** | `npm run check` | **Full CI pipeline**: Typecheck + Vitest + Standalone tests + Build |
+| **`server/`** | `npm run dev` | Start API server with auto-restart on changes |
+| **`server/`** | `npm start` | Start API server in production mode |
+| **`server/`** | `npm test` | Run backend test suite (31 unit & integration tests) |
+| **`server/`** | `node --env-file=.env seed-admin.js` | Seed or update superadmin account |
+| **`server/`** | `node --env-file=.env seed-events.js` | Seed sample events into database |
 
-### Verification
+---
 
-Run these before opening a PR; CI runs the same steps on every pull request (`.github/workflows/ci.yml`):
+## 🛠️ Developer Guide: What to Know Before Changing Anything
 
-1. **Frontend** — `npm ci && npm run check`.
-2. **API** — start a throwaway MongoDB (`docker run -d -p 27017:27017 mongo:7`), then:
-   ```bash
-   cd server
-   export MONGO_URI=mongodb://127.0.0.1:27017/gdgoc-test JWT_SECRET=dev-secret CLIENT_URL=http://localhost:5173
-   npm run dev            # in one terminal
-   npm test               # in another, with the same variables
-   ```
-   The API tests create accounts and events, so they refuse to run unless `MONGO_URI` points at a local database. In CI the same steps run against a MongoDB service container.
+Before making any pull request or architectural modification, review these non-negotiable conventions:
+
+### 1. Hash Routing
+The application uses a lightweight, hash-driven SPA router (`location.hash`) for zero-configuration compatibility across static hosting providers (GitHub Pages, Vercel, Netlify).
+- Route dictionary is defined in `src/App.tsx` (`pages` object).
+- Whenever creating a new page or modal view, declare its hash route in `src/App.tsx` and ensure navigation links use `#/route` format (e.g., `#/dashboard`, `#/projects`).
+
+### 2. Single Source of Truth
+Never duplicate core business definitions or status calculation:
+- **Campaign dates & Open Source October math**: Defined solely in `src/lib/oso.ts`. Do not hardcode campaign dates elsewhere.
+- **Copy & Static Cards**: Defined in `src/data/content.ts` (domains, pillars, notices, and past event archive).
+- **Shared Validation**: Files in `src/lib/` (such as `profile.ts` and `events.ts`) are shared directly between the TypeScript frontend and the Node.js backend. Keep them pure, portable, and standard-library compliant.
+
+### 3. Authentication & Session Lifecycles
+- Auth tokens are issued as HTTP-only, secure, `SameSite=None` session cookies.
+- **Token Versioning**: Every User record contains a `tokenVersion: number`. Changing passwords immediately increments `tokenVersion`, invalidating active JWT tokens across all sessions and devices.
+- **CSRF & Origin Protection**: All state-modifying requests (`POST`, `PUT`, `PATCH`, `DELETE`) verify the HTTP `Origin` header against `CLIENT_URL` (in production) or allowed local ports (in development).
+
+### 4. Ticket & QR State Machine
+A ticket moves through strictly defined states in `src/lib/tickets.ts` and `server/utils/tickets.js`:
+- `pending` ➔ `confirmed` ➔ `checked_in`
+- Terminal states: `cancelled`, `event_cancelled`, `expired`.
+- Tickets are cryptographically unique (`ticketId`) and generated on the server. The gate scanner enforces that **each ticket can only be admitted once**. Duplicate admissions are rejected.
+
+### 5. Design System: Neo-Brutalist Aesthetic
+GDGoC PSIT uses a distinct neo-brutalist visual style. Always follow existing CSS utility tokens:
+- **Borders & Outlines**: Hard 2px or 3px ink borders (`border-[3px] border-ink`).
+- **Buttons**: Use `.hard-button` with box shadows (`shadow-[4px_4px_0_var(--color-ink)]`).
+- **Brand Colors**: Use curated semantic tokens:
+  - `gblue` (`#4285F4`) · `gred` (`#EA4335`) · `gyellow` (`#FBBC04`) · `ggreen` (`#34A853`)
+- **Accessibility & Motion**: Respect `prefers-reduced-motion` queries. Background 3D effects (`DeckWorld`, `Ruru`) gracefully step down on mobile or low-power devices.
+
+### 6. Pre-Flight Verification Checklist
+Before committing any changes or opening a pull request, run:
+```bash
+# In repo root:
+npm run check
+
+# In server/:
+npm test
+```
+Both commands must pass with **0 errors, 0 warnings, and 0 failing tests**.
+
+---
 
 ### Deployment
 
