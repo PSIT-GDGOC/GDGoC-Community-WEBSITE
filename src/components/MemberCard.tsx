@@ -1,4 +1,4 @@
-import { useState, type PointerEvent } from "react";
+import { useEffect, useState, type PointerEvent } from "react";
 import { useReducedMotion } from "framer-motion";
 import { COLOR_HEX, ON_COLOR, PANEL_HEX, type GColor } from "../data/content";
 import type { Profile } from "../lib/profile";
@@ -60,6 +60,11 @@ export default function MemberCard({
   const finePointer = useFinePointer();
   const reducedMotion = useReducedMotion();
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [user.avatarUrl]);
 
   const memberSince = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString("en-IN", { month: "short", year: "numeric" })
@@ -76,6 +81,8 @@ export default function MemberCard({
       y: ((event.clientX - box.left) / box.width - 0.5) * MAX_TILT,
     });
   };
+
+  const showAvatar = Boolean(user.avatarUrl && !imgError);
 
   return (
     <figure aria-label={`GDGoC PSIT member card for ${user.name}`} style={{ perspective: 900 }}>
@@ -106,13 +113,21 @@ export default function MemberCard({
           <p className={`font-mono text-[10px] font-semibold tracking-[0.25em] uppercase ${user.role === "admin" ? "text-gred font-bold" : "text-muted"}`}>
             GDGoC PSIT · {user.role === "admin" ? "⚡ Administrator" : "Member"}
           </p>
-          <span
-            className="mt-4 grid h-20 w-20 place-items-center border-[3px] border-ink font-display text-3xl font-extrabold shadow-[4px_4px_0_var(--color-ink)]"
+          <div
+            className="mt-4 grid h-20 w-20 place-items-center overflow-hidden border-[3px] border-ink font-display text-3xl font-extrabold shadow-[4px_4px_0_var(--color-ink)]"
             style={{ background: PANEL_HEX[color], color: ON_COLOR[color] }}
-            aria-hidden="true"
           >
-            {initials}
-          </span>
+            {showAvatar ? (
+              <img
+                src={user.avatarUrl!}
+                alt={user.name}
+                className="h-full w-full object-cover"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <span aria-hidden="true">{initials}</span>
+            )}
+          </div>
           <figcaption className="mt-4 font-display text-2xl leading-tight font-extrabold break-words">
             {user.name}
           </figcaption>

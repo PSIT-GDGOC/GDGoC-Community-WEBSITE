@@ -3,15 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Event Poster Storage Adapter
+ * Storage Adapter for Posters & Member Profile Avatars
  *
  * Supports:
  *  - Cloudinary persistent cloud storage (recommended for production)
- *  - AWS S3 / Compatible Object Storage (Cloudflare R2, MinIO)
  *  - Local filesystem storage (development & automated test adapter)
  */
 
-function getCloudinaryConfig() {
+export function getCloudinaryConfig() {
   if (process.env.CLOUDINARY_URL) {
     try {
       const url = new URL(process.env.CLOUDINARY_URL);
@@ -41,7 +40,7 @@ function getCloudinaryConfig() {
 }
 
 /**
- * Upload to Cloudinary via authenticated REST API
+ * Generates official Cloudinary upload/destroy signature
  */
 export function generateCloudinarySignature(params, apiSecret) {
   const excluded = new Set(["file", "cloud_name", "resource_type", "api_key", "signature"]);
@@ -54,17 +53,168 @@ export function generateCloudinarySignature(params, apiSecret) {
   return crypto.createHash("sha1").update(toSign).digest("hex");
 }
 
-async function uploadToCloudinary(fileBuffer, ext, config) {
+/**
+ * Detect image format using magic bytes
+ */
+export function detectImageFormat(buffer) {
+  if (!buffer || buffer.length < 3) return null;
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "jpg";
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "png";
+  }
+
+  // WebP: 52 49 46 46 (RIFF) ... 57 45 42 50 (WEBP)
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return "webp";
+  }
+
+  return null;
+}
+
+/**
+ * Strips EXIF, XMP, comments, and ancillary metadata from images server-side
+ */
+export function stripImageMetadata(buffer, ext) {
+  if (!buffer || !Buffer.isBuffer(buffer)) return buffer;
+
+  try {
+    if (ext === "jpg" || ext === "jpeg") {
+      if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+        return buffer;
+      }
+      const parts = [Buffer.from([0xff, 0xd8])];
+      let pos = 2;
+      while (pos < buffer.length - 1) {
+        if (buffer[pos] !== 0xff) {
+          return buffer;
+        }
+        const marker = buffer[pos + 1];
+        if (marker === 0xda) {
+          // SOS: entropy-coded scan data starts here
+          parts.push(buffer.subarray(pos));
+          break;
+        }
+        if (marker === 0xd9) {
+          // EOI
+          parts.push(Buffer.from([0xff, 0xd9]));
+          break;
+        }
+        if (pos + 4 > buffer.length) break;
+        const len = buffer.readUInt16BE(pos + 2);
+        if (pos + 2 + len > buffer.length) break;
+
+        // Strip APP1-APP15 (0xE1..0xEF) and COM (0xFE)
+        const isMetadataApp = marker >= 0xe1 && marker <= 0xef;
+        const isComment = marker === 0xfe;
+        if (!isMetadataApp && !isComment) {
+          parts.push(buffer.subarray(pos, pos + 2 + len));
+        }
+        pos += 2 + len;
+      }
+      return Buffer.concat(parts);
+    }
+
+    if (ext === "png") {
+      if (buffer.length < 8) return buffer;
+      const signature = buffer.subarray(0, 8);
+      const parts = [signature];
+      let pos = 8;
+      const METADATA_CHUNKS = new Set(["tEXt", "zTXt", "iTXt", "eXIf", "tIME"]);
+      while (pos + 8 <= buffer.length) {
+        const chunkLen = buffer.readUInt32BE(pos);
+        const chunkType = buffer.toString("ascii", pos + 4, pos + 8);
+        const totalChunkLen = 4 + 4 + chunkLen + 4;
+        if (pos + totalChunkLen > buffer.length) break;
+
+        if (!METADATA_CHUNKS.has(chunkType)) {
+          parts.push(buffer.subarray(pos, pos + totalChunkLen));
+        }
+        pos += totalChunkLen;
+        if (chunkType === "IEND") break;
+      }
+      return Buffer.concat(parts);
+    }
+
+    if (ext === "webp") {
+      if (buffer.length < 12) return buffer;
+      const riffHeader = buffer.subarray(0, 4).toString("ascii");
+      const webpHeader = buffer.subarray(8, 12).toString("ascii");
+      if (riffHeader !== "RIFF" || webpHeader !== "WEBP") return buffer;
+
+      const chunkParts = [];
+      let pos = 12;
+      let totalDataLen = 4;
+      const METADATA_FOURCC = new Set(["EXIF", "XMP "]);
+
+      while (pos + 8 <= buffer.length) {
+        const fourcc = buffer.toString("ascii", pos, pos + 4);
+        const chunkSize = buffer.readUInt32LE(pos + 4);
+        const paddedSize = chunkSize + (chunkSize % 2);
+        const totalChunkSize = 8 + paddedSize;
+        if (pos + 8 + chunkSize > buffer.length) break;
+
+        if (!METADATA_FOURCC.has(fourcc)) {
+          let chunkBuf = buffer.subarray(pos, pos + Math.min(totalChunkSize, buffer.length - pos));
+          if (fourcc === "VP8X" && chunkBuf.length >= 9) {
+            chunkBuf = Buffer.from(chunkBuf);
+            chunkBuf[8] = chunkBuf[8] & ~0x0c;
+          }
+          chunkParts.push(chunkBuf);
+          totalDataLen += chunkBuf.length;
+        }
+        pos += totalChunkSize;
+      }
+
+      const newHeader = Buffer.alloc(12);
+      newHeader.write("RIFF", 0, 4, "ascii");
+      newHeader.writeUInt32LE(totalDataLen, 4);
+      newHeader.write("WEBP", 8, 4, "ascii");
+      return Buffer.concat([newHeader, ...chunkParts]);
+    }
+  } catch {
+    return buffer;
+  }
+
+  return buffer;
+}
+
+/**
+ * Upload poster to Cloudinary
+ */
+async function uploadPosterToCloudinary(fileBuffer, ext, config) {
   const { cloudName, apiKey, apiSecret } = config;
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = `poster_${crypto.randomBytes(16).toString("hex")}`;
   const folder = "gdgoc-posters";
 
-
   const paramsToSign = { folder, public_id: publicId, timestamp };
   const signature = generateCloudinarySignature(paramsToSign, apiSecret);
-
-
 
   const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
   const blob = new Blob([fileBuffer], { type: mimeType });
@@ -96,9 +246,9 @@ async function uploadToCloudinary(fileBuffer, ext, config) {
 }
 
 /**
- * Local disk storage adapter (development, staging fallback, and test suite)
+ * Upload poster to local disk
  */
-async function uploadToLocalDisk(fileBuffer, ext) {
+async function uploadPosterToLocalDisk(fileBuffer, ext) {
   const uploadsDir = path.join(process.cwd(), "uploads");
   await fs.promises.mkdir(uploadsDir, { recursive: true });
 
@@ -121,19 +271,145 @@ export async function uploadPoster(fileBuffer, ext) {
   const cloudinaryConfig = getCloudinaryConfig();
 
   if (cloudinaryConfig) {
-    return uploadToCloudinary(fileBuffer, ext, cloudinaryConfig);
+    return uploadPosterToCloudinary(fileBuffer, ext, cloudinaryConfig);
   }
 
   const isProduction = process.env.NODE_ENV === "production";
   const allowLocalInProd = process.env.ALLOW_LOCAL_STORAGE_IN_PRODUCTION === "true";
 
-  // In production, reject ephemeral storage unless explicitly overridden
   if (isProduction && !allowLocalInProd) {
     throw new Error(
       "Ephemeral local storage is disabled in production. Please configure CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/KEY/SECRET for persistent poster storage."
     );
   }
 
-  // Fallback to local disk adapter in development / testing
-  return uploadToLocalDisk(fileBuffer, ext);
+  return uploadPosterToLocalDisk(fileBuffer, ext);
+}
+
+/**
+ * Upload avatar to Cloudinary with eager crop and optimization
+ */
+async function uploadAvatarToCloudinary(fileBuffer, ext, config) {
+  const { cloudName, apiKey, apiSecret } = config;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `avatar_${crypto.randomBytes(16).toString("hex")}`;
+  const folder = "gdgoc-avatars";
+  const transformation = "c_fill,w_400,h_400,g_face,q_auto,f_auto";
+
+  const paramsToSign = { folder, public_id: publicId, timestamp, transformation };
+  const signature = generateCloudinarySignature(paramsToSign, apiSecret);
+
+  const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+  const blob = new Blob([fileBuffer], { type: mimeType });
+
+  const formData = new FormData();
+  formData.append("file", blob, `${publicId}.${ext}`);
+  formData.append("api_key", apiKey);
+  formData.append("timestamp", String(timestamp));
+  formData.append("signature", signature);
+  formData.append("folder", folder);
+  formData.append("public_id", publicId);
+  formData.append("transformation", transformation);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Cloudinary avatar upload failed with status ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  return {
+    url: data.secure_url || data.url,
+    publicId: data.public_id,
+    provider: "cloudinary",
+  };
+}
+
+/**
+ * Upload avatar to local disk
+ */
+async function uploadAvatarToLocalDisk(fileBuffer, ext) {
+  const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
+  await fs.promises.mkdir(uploadsDir, { recursive: true });
+
+  const fileName = `avatar_${crypto.randomBytes(16).toString("hex")}.${ext}`;
+  const filePath = path.join(uploadsDir, fileName);
+
+  await fs.promises.writeFile(filePath, fileBuffer);
+
+  return {
+    url: `/uploads/avatars/${fileName}`,
+    publicId: fileName,
+    provider: "local",
+  };
+}
+
+/**
+ * Upload avatar entry point
+ */
+export async function uploadAvatar(fileBuffer, ext) {
+  const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
+  const cloudinaryConfig = getCloudinaryConfig();
+
+  if (cloudinaryConfig) {
+    return uploadAvatarToCloudinary(sanitizedBuffer, ext, cloudinaryConfig);
+  }
+
+  const isProduction = process.env.NODE_ENV === "production";
+  const allowLocalInProd = process.env.ALLOW_LOCAL_STORAGE_IN_PRODUCTION === "true";
+
+  if (isProduction && !allowLocalInProd) {
+    throw new Error(
+      "Ephemeral local storage is disabled in production. Please configure CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/KEY/SECRET for persistent avatar storage."
+    );
+  }
+
+  return uploadAvatarToLocalDisk(sanitizedBuffer, ext);
+}
+
+/**
+ * Delete avatar from Cloudinary or local disk
+ */
+export async function deleteAvatar(publicId, provider) {
+  if (!publicId) return;
+
+  if (provider === "cloudinary") {
+    const config = getCloudinaryConfig();
+    if (!config) return;
+    const { cloudName, apiKey, apiSecret } = config;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const paramsToSign = { public_id: publicId, timestamp };
+    const signature = generateCloudinarySignature(paramsToSign, apiSecret);
+
+    const formData = new FormData();
+    formData.append("public_id", publicId);
+    formData.append("timestamp", String(timestamp));
+    formData.append("api_key", apiKey);
+    formData.append("signature", signature);
+
+    try {
+      await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+        method: "POST",
+        body: formData,
+      });
+    } catch (err) {
+      console.error("Failed to delete avatar from Cloudinary:", err);
+    }
+    return;
+  }
+
+  // Local storage cleanup
+  try {
+    const fileName = path.basename(publicId);
+    const avatarPath = path.join(process.cwd(), "uploads", "avatars", fileName);
+    const directPath = path.join(process.cwd(), "uploads", fileName);
+    await fs.promises.unlink(avatarPath).catch(() => {});
+    await fs.promises.unlink(directPath).catch(() => {});
+  } catch {
+    // Ignore cleanup errors
+  }
 }
