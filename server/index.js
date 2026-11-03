@@ -35,6 +35,16 @@ app.use(
   express.json({ limit: "6mb" })
 );
 
+// Dedicated parsers for avatar upload endpoints (up to 3mb)
+app.use(
+  ["/api/users/me/avatar", "/api/v1/users/me/avatar"],
+  express.raw({ type: ["image/*", "application/octet-stream"], limit: "3mb" })
+);
+app.use(
+  ["/api/users/me/avatar", "/api/v1/users/me/avatar"],
+  express.json({ limit: "3mb" })
+);
+
 // Standard JSON limit for all other routes (DoS prevention)
 app.use(express.json({ limit: "20kb" }));
 

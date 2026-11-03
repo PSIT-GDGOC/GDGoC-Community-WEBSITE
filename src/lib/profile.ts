@@ -50,6 +50,7 @@ export type Profile = {
   year?: number;
   bio?: string;
   enrollmentNo?: string;
+  avatarUrl?: string | null;
   emailVerified?: boolean;
   emailVerifiedAt?: string | null;
   createdAt?: string;
