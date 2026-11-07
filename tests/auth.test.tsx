@@ -175,3 +175,86 @@ test("successful sign up creates session and navigates directly to dashboard wit
   expect(screen.queryByText(/verification code/i)).toBeNull();
   expect(screen.queryByText(/resend code/i)).toBeNull();
 });
+
+test("login page displays 'Forgot password?' button that switches to recovery form", () => {
+  location.hash = "#/login";
+  render(<Auth />);
+
+  const forgotBtn = screen.getByRole("button", { name: /forgot password\?/i });
+  expect(forgotBtn).toBeTruthy();
+
+  fireEvent.click(forgotBtn);
+
+  expect(screen.getByRole("heading", { name: /reset your password/i })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /request reset link/i })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /back to login/i })).toBeTruthy();
+});
+
+test("requesting a reset link calls POST /auth/forgot-password and shows confirmation message", async () => {
+  location.hash = "#/login?mode=forgot";
+  let forgotCalled = false;
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/users/me")) {
+        return json(401, {});
+      }
+      if (String(url).endsWith("/auth/forgot-password") && init?.method === "POST") {
+        forgotCalled = true;
+        return json(200, {
+          message: "If an account exists with that email address, a password reset link has been sent.",
+        });
+      }
+      return login();
+    })
+  );
+
+  render(<Auth />);
+  type(/email address/i, "student@psit.ac.in");
+  fireEvent.click(screen.getByRole("button", { name: /request reset link/i }));
+
+  await waitFor(() => {
+    expect(forgotCalled).toBe(true);
+    expect(screen.getAllByText(/check your inbox/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/student@psit.ac.in/i)).toBeTruthy();
+  });
+});
+
+test("reset mode displays new password form and submits to POST /auth/reset-password", async () => {
+  location.hash = "#/login?mode=reset&token=valid_token_xyz&email=student%40psit.ac.in";
+  let resetCalled = false;
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/auth/reset-password") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        expect(body.token).toBe("valid_token_xyz");
+        expect(body.email).toBe("student@psit.ac.in");
+        expect(body.password).toBe("NewSecret123!");
+        resetCalled = true;
+        return json(200, { message: "Password reset successfully. You can now log in with your new password." });
+      }
+      return login();
+    })
+  );
+
+  render(<Auth />);
+
+  expect(screen.getByRole("heading", { name: /set new password/i })).toBeTruthy();
+  type(/^new password/i, "NewSecret123!");
+  type(/confirm new password/i, "NewSecret123!");
+  fireEvent.click(screen.getByRole("button", { name: /reset password/i }));
+
+  await waitFor(() => {
+    expect(resetCalled).toBe(true);
+    expect(screen.getByText(/password reset successful/i)).toBeTruthy();
+  });
+
+  const returnBtn = screen.getByRole("button", { name: /return to login/i });
+  expect(returnBtn).toBeTruthy();
+  fireEvent.click(returnBtn);
+
+  expect(screen.getByRole("heading", { name: "Log in" })).toBeTruthy();
+});

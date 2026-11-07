@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import User, { publicUser } from "./models/User.js";
+import Media from "./models/Media.js";
 import { stripImageMetadata, detectImageFormat, uploadAvatar, deleteAvatar } from "./utils/storage.js";
 
 const API = process.env.API_URL || "http://localhost:5000/api";
@@ -441,12 +442,22 @@ describe("Personal Profile Picture & Avatar Management Suite", () => {
     // 1. Verify storage cleanup when an upload is aborted/failed after creating storage file
     const uploaded = await uploadAvatar(VALID_PNG_BUFFER, "png");
     assert.ok(uploaded.publicId);
-    const diskPath = path.join(process.cwd(), "uploads", "avatars", uploaded.publicId);
-    assert.equal(fs.existsSync(diskPath), true, "New avatar file must exist on disk");
+    if (uploaded.provider === "local") {
+      const diskPath = path.join(process.cwd(), "uploads", "avatars", uploaded.publicId);
+      assert.equal(fs.existsSync(diskPath), true, "New avatar file must exist on disk");
 
-    // Clean up on failure (simulating catch block in routes/users.js)
-    await deleteAvatar(uploaded.publicId, uploaded.provider);
-    assert.equal(fs.existsSync(diskPath), false, "New avatar file must be cleaned up on failure");
+      // Clean up on failure (simulating catch block in routes/users.js)
+      await deleteAvatar(uploaded.publicId, uploaded.provider);
+      assert.equal(fs.existsSync(diskPath), false, "New avatar file must be cleaned up on failure");
+    } else if (uploaded.provider === "mongodb") {
+      const media = await Media.findById(uploaded.publicId);
+      assert.ok(media, "New avatar media must exist in MongoDB");
+
+      // Clean up on failure (simulating catch block in routes/users.js)
+      await deleteAvatar(uploaded.publicId, uploaded.provider);
+      const mediaAfter = await Media.findById(uploaded.publicId);
+      assert.equal(mediaAfter, null, "New avatar media must be cleaned up on failure");
+    }
 
     // 2. Verify that when User A uploads and replaces avatar, old avatar is replaced and cleaned up cleanly
     const beforeUser = await User.findById(userA._id);
@@ -463,13 +474,23 @@ describe("Personal Profile Picture & Avatar Management Suite", () => {
     const afterUser = await User.findById(userA._id);
     assert.notEqual(afterUser.avatarPublicId, initialOldPublicId);
 
-    // Old file is unlinked, new file exists on disk
+    // Old file/media is unlinked, new file/media exists
     if (initialOldPublicId) {
-      const oldPath = path.join(process.cwd(), "uploads", "avatars", initialOldPublicId);
-      assert.equal(fs.existsSync(oldPath), false, "Old avatar file must be unlinked from disk");
+      if (beforeUser.avatarProvider === "local") {
+        const oldPath = path.join(process.cwd(), "uploads", "avatars", initialOldPublicId);
+        assert.equal(fs.existsSync(oldPath), false, "Old avatar file must be unlinked from disk");
+      } else if (beforeUser.avatarProvider === "mongodb") {
+        const oldMedia = await Media.findById(initialOldPublicId);
+        assert.equal(oldMedia, null, "Old avatar media must be deleted from MongoDB");
+      }
     }
-    const newPath = path.join(process.cwd(), "uploads", "avatars", afterUser.avatarPublicId);
-    assert.equal(fs.existsSync(newPath), true, "New avatar file must exist on disk");
+    if (afterUser.avatarProvider === "local") {
+      const newPath = path.join(process.cwd(), "uploads", "avatars", afterUser.avatarPublicId);
+      assert.equal(fs.existsSync(newPath), true, "New avatar file must exist on disk");
+    } else if (afterUser.avatarProvider === "mongodb") {
+      const newMedia = await Media.findById(afterUser.avatarPublicId);
+      assert.ok(newMedia, "New avatar media must exist in MongoDB");
+    }
   });
 
   it("15. Rate limiting restricts excessive avatar uploads with 429", async () => {

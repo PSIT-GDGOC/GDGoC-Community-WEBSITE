@@ -5,7 +5,7 @@ import { scrollToId, scrollToTop } from "../lib/scroll";
 import { RollText, SuitGlyph, SUIT_FOR } from "./ui";
 import GdgLogo from "./GdgLogo";
 import { COLOR_HEX, ON_COLOR, PANEL_EDGE, PANEL_HEX, type GColor } from "../data/content";
-import { api, type Profile } from "../lib/profile";
+import { api, resolveImageUrl, type Profile } from "../lib/profile";
 
 const NAV_ITEMS: { id: string; label: string; desc: string; color: GColor }[] = [
   { id: "board", label: "Board", desc: "what's pinned this week", color: "gblue" },
@@ -129,6 +129,12 @@ function MenuRow({
 }
 
 function AccountLink({ user }: { user: Profile | null }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [user?.avatarUrl]);
+
   if (!user) {
     return (
       <a
@@ -141,6 +147,7 @@ function AccountLink({ user }: { user: Profile | null }) {
   }
 
   const initial = user.name.trim().charAt(0).toUpperCase();
+  const avatar = user.avatarUrl && !imgError ? resolveImageUrl(user.avatarUrl) : null;
 
   return (
     <div className="flex items-center gap-2">
@@ -159,8 +166,17 @@ function AccountLink({ user }: { user: Profile | null }) {
         aria-label="Your dashboard"
         className="hard-button inline-flex items-center gap-2 bg-bg px-2 py-1.5 font-display text-sm font-bold text-ink sm:px-3"
       >
-        <span className="grid h-6 w-6 place-items-center border-2 border-ink bg-gblue text-xs text-white">
-          {initial}
+        <span className="grid h-6 w-6 place-items-center overflow-hidden border-2 border-ink bg-gblue text-xs font-bold text-white">
+          {avatar ? (
+            <img
+              src={avatar}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            initial
+          )}
         </span>
         <span className="hidden sm:inline">Dashboard</span>
       </a>
