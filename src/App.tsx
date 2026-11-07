@@ -41,6 +41,8 @@ export default function App() {
   const pages = {
     "#/profile": Profile,
     "#/login": Auth,
+    "#/forgot-password": Auth,
+    "#/reset-password": Auth,
     "#/tickets": Tickets,
     "#/events": EventsPage,
     "#/dashboard": Dashboard,

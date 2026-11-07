@@ -91,6 +91,69 @@ export function getLatestTestOtp(email) {
   return getTestMailbox(email)?.code;
 }
 
+export function getLatestTestResetToken(email) {
+  return getTestMailbox(email)?.resetToken;
+}
+
+export function getLatestTestResetUrl(email) {
+  return getTestMailbox(email)?.resetUrl;
+}
+
+export async function sendPasswordResetEmail({ email, resetUrl, token }) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+
+  // Test / In-memory mailbox for local and automated testing
+  testMailbox.set(normalizedEmail, {
+    resetToken: token,
+    resetUrl,
+    sentAt: new Date(),
+  });
+
+  if (process.env.NODE_ENV !== "production") {
+    if (process.env.NODE_ENV === "development" && process.env.DEBUG_EMAILS === "true") {
+      console.log(`[DEV-MAIL] Password reset link for ${normalizedEmail}: ${resetUrl}`);
+    }
+  }
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM || "GDGoC PSIT <noreply@psit.ac.in>",
+          to: [normalizedEmail],
+          subject: "Reset your GDGoC PSIT password",
+          text: `Hello,\n\nWe received a request to reset your password for your GDGoC PSIT account.\n\nClick the link below to set a new password:\n${resetUrl}\n\nThis link expires in 15 minutes. If you did not request a password reset, you can safely ignore this email.\n\nGDGoC PSIT Team`,
+          html: `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 3px solid #0a0a0a; background-color: #fdfaf2;">
+            <h2 style="margin-top: 0; color: #0a0a0a; font-size: 24px;">Password Reset Request</h2>
+            <p style="color: #222; font-size: 15px; line-height: 1.5;">We received a request to reset the password for your GDGoC PSIT account. Click the button below to choose a new password:</p>
+            <div style="margin: 28px 0; text-align: center;">
+              <a href="${resetUrl}" style="display: inline-block; padding: 14px 28px; background-color: #fadb39; color: #0a0a0a; border: 3px solid #0a0a0a; font-weight: bold; text-decoration: none; font-size: 16px; box-shadow: 4px 4px 0 #0a0a0a;">
+                Reset Password →
+              </a>
+            </div>
+            <p style="color: #666; font-size: 13px; line-height: 1.4;">This link expires in 15 minutes. If you did not request this password reset, no action is needed — your account remains secure.</p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
+            <p style="color: #888; font-size: 12px; word-break: break-all;">If the button above does not work, copy and paste this URL into your browser:<br/>${resetUrl}</p>
+          </div>`,
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("[EMAIL-DELIVERY-ERROR]", res.status, errorData);
+      }
+    } catch (err) {
+      console.error("[EMAIL-DELIVERY-ERROR]", err.message);
+    }
+  }
+
+  return true;
+}
+
 export function clearTestMailbox() {
   testMailbox.clear();
 }

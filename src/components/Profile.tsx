@@ -5,14 +5,14 @@ import { PageHeader } from "./ui";
 import {
   api,
   BRANCHES,
-  PASSWORD_RULE,
-  validatePassword,
   validateProfile,
   resolveImageUrl,
   YEARS,
   type Profile as P,
   type ProfileEdit,
 } from "../lib/profile";
+import { ticketSummary } from "../lib/dashboard";
+import type { Ticket } from "../lib/tickets";
 
 type Msg = { ok: boolean; text: string } | null;
 
@@ -68,16 +68,22 @@ function Note({ msg }: { msg: Msg }) {
 
 export default function Profile() {
   const [user, setUser] = useState<P | null>(null);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
 
   const loadUser = async () => {
     setStatus("loading");
     try {
-      const me = await api<P>("/users/me");
+      const [me, ticketData] = await Promise.all([
+        api<P>("/users/me"),
+        api<{ tickets: Ticket[] }>("/tickets").catch(() => ({ tickets: [] })),
+      ]);
+
       if (!me?.name) {
         throw new Error("bad response");
       }
       setUser(me);
+      setTickets(ticketData?.tickets || []);
       setStatus("ready");
     } catch (error) {
       if ((error as Error).message === "401") {
@@ -92,11 +98,16 @@ export default function Profile() {
     loadUser();
   }, []);
 
+  const summary = ticketSummary(tickets);
+  const upcomingCount = summary.upcoming.length;
+  const attendedCount = summary.attended;
+  const registeredCount = tickets.filter((t) => t.state !== "cancelled").length;
+
   return (
     <main className="mx-auto max-w-6xl px-4 pt-28 pb-24 sm:px-6">
       {user && <MemberNav active="profile" />}
       <PageHeader tag="Member area" title="Your profile" color="gblue">
-        Your member card, account details and security settings in one place.
+        Your member card, account details and community presence in one place.
       </PageHeader>
       {user?.role === "admin" && (
         <div className="mt-6 flex flex-wrap gap-3">
@@ -129,13 +140,17 @@ export default function Profile() {
       {user && (
         <div className="mt-12 grid items-start gap-10 lg:grid-cols-[minmax(0,360px)_1fr] lg:gap-14">
           <aside className="mx-auto w-full max-w-[360px] space-y-6 lg:sticky lg:top-28">
-            <MemberCard user={user} />
+            <MemberCard
+              user={user}
+              upcoming={upcomingCount}
+              attended={attendedCount}
+              registered={registeredCount}
+            />
           </aside>
 
           <div className="min-w-0 space-y-8">
             <ProfilePhoto user={user} onSaved={setUser} />
             <EditProfile user={user} onSaved={setUser} />
-            <ChangePassword />
           </div>
         </div>
       )}
@@ -304,15 +319,40 @@ function CropModal({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
+  const modalRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const BOX_SIZE = 260;
 
   useEffect(() => {
+    modalRef.current?.focus();
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !uploading) {
+      if (uploading) return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
         onCancel();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y - (e.shiftKey ? 25 : 10) }));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y + (e.shiftKey ? 25 : 10) }));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, x: p.x - (e.shiftKey ? 25 : 10) }));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setPan((p) => ({ ...p, x: p.x + (e.shiftKey ? 25 : 10) }));
+      } else if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        setZoom((z) => Math.min(3, Number((z + 0.1).toFixed(2))));
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        setZoom((z) => Math.max(1, Number((z - 0.1).toFixed(2))));
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [uploading, onCancel]);
@@ -408,9 +448,14 @@ function CropModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="crop-modal-title"
+      aria-describedby="crop-modal-desc"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
     >
-      <div className="relative w-full max-w-md border-[3px] border-ink bg-bg p-6 shadow-[8px_8px_0_var(--color-ink)]">
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        className="relative w-full max-w-md border-[3px] border-ink bg-bg p-6 shadow-[8px_8px_0_var(--color-ink)] outline-none"
+      >
         <div className="flex items-center justify-between border-b-[3px] border-ink pb-3">
           <h3 id="crop-modal-title" className="font-display text-lg font-extrabold">
             Crop profile photo
@@ -426,8 +471,8 @@ function CropModal({
           </button>
         </div>
 
-        <p className="mt-3 text-xs text-muted">
-          Drag the image to center your photo, and use the zoom slider to adjust framing.
+        <p id="crop-modal-desc" className="mt-3 text-xs text-muted">
+          Drag the image or use arrow keys to center your photo. Use the slider or +/- to zoom.
         </p>
 
         <div className="mt-4 flex justify-center">
@@ -676,81 +721,6 @@ function EditProfile({ user, onSaved }: { user: P; onSaved: (u: P) => void }) {
               Edit profile
             </button>
           )}
-        </div>
-      </form>
-      <Note msg={msg} />
-    </Card>
-  );
-}
-
-function ChangePassword() {
-  const empty = { current: "", next: "", confirm: "" };
-  const [pw, setPw] = useState(empty);
-  const [show, setShow] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<Msg>(null);
-  const type = show ? "text" : "password";
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const err = validatePassword(pw.current, pw.next, pw.confirm);
-    if (err) {
-      setMsg({ ok: false, text: err });
-      return;
-    }
-
-    setSaving(true);
-    setMsg(null);
-    try {
-      await api("/users/me/password", "PATCH", { currentPassword: pw.current, newPassword: pw.next });
-      setPw(empty);
-      setMsg({ ok: true, text: "Password changed." });
-    } catch (e) {
-      const message = (e as Error).message;
-      const text = message === "401" ? "Your session expired. Log in again." : message;
-      setMsg({ ok: false, text });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Card title="Password & security" desc={PASSWORD_RULE}>
-      <form onSubmit={submit} className="grid gap-4">
-        <Field label="Current password">
-          <input
-            className={input}
-            type={type}
-            autoComplete="current-password"
-            value={pw.current}
-            onChange={(e) => setPw({ ...pw, current: e.target.value })}
-          />
-        </Field>
-        <Field label="New password">
-          <input
-            className={input}
-            type={type}
-            autoComplete="new-password"
-            value={pw.next}
-            onChange={(e) => setPw({ ...pw, next: e.target.value })}
-          />
-        </Field>
-        <Field label="Confirm new password">
-          <input
-            className={input}
-            type={type}
-            autoComplete="new-password"
-            value={pw.confirm}
-            onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show passwords
-        </label>
-        <div>
-          <button type="submit" className={button} disabled={saving}>
-            {saving ? "Updating…" : "Change password"}
-          </button>
         </div>
       </form>
       <Note msg={msg} />

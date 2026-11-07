@@ -56,6 +56,8 @@ export function isAllowedCampusEmail(
 }
 
 export type Profile = {
+  id?: string;
+  _id?: string;
   name: string;
   email: string;
   role?: "student" | "admin";
