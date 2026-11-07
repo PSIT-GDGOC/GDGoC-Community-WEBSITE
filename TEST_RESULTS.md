@@ -13,7 +13,7 @@ All automated regression and integration test suites passed with **100% success 
 
 | Verification Level | Test Runner | Total Tests / Checks | Passed | Failed | Status |
 |---|---|---|---|---|---|
-| **Backend Integration & Unit** | Node.js Test Runner (`node --test`) | **97 tests** (14 suites) | 97 | 0 | **100% PASS** |
+| **Backend Integration & Unit** | Node.js Test Runner (`node --test`) | **98 tests** (14 suites) | 98 | 0 | **100% PASS** |
 | **Frontend Unit & Component** | Vitest (`vitest run --environment jsdom`) | **78 tests** (8 suites) | 78 | 0 | **100% PASS** |
 | **Logic & Motion Boundary Scripts** | TSX (`tsx tests/*.test.ts`) | **90 checks** (4 suites) | 90 | 0 | **100% PASS** |
 | **Production Build Compilation** | Vite v7 (`vite build`) | Single-file Bundle | 1064 modules | 0 errors | **SUCCESS** |
@@ -30,16 +30,17 @@ node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit \
 ```
 
 ### 2.1 Password Recovery & Account Verification Suite (`server/password-reset.test.js`)
-- **Status**: PASSED (7 / 7 tests, 100%)
-- **Duration**: ~3.1 seconds
+- **Status**: PASSED (8 / 8 tests, 100%)
+- **Duration**: ~4.8 seconds
 - **Test Details**:
-  1. `✔ 1. Forgot password request for unknown account returns generic 200 without leaking existence (15.5ms)`
-  2. `✔ 2. Forgot password request for valid account returns generic 200 and generates reset token (29.8ms)`
-  3. `✔ 3. Verify reset token endpoint validates genuine token and rejects invalid tokens (28.8ms)`
-  4. `✔ 4. Reset password rejects mismatched passwords and passwords violating complexity rules (16.9ms)`
-  5. `✔ 5. Reset password succeeds, invalidates previous sessions, and verifies email ownership (2396.0ms)`
-  6. `✔ 6. Rejects reset request when token has expired (13.7ms)`
-  7. `✔ 7. Rate limiting restricts excessive forgot-password requests (93.2ms)`
+  1. `✔ 1. Forgot password request for unknown account returns generic 200 without leaking existence (14.0ms)`
+  2. `✔ 2. Forgot password request for valid account returns generic 200 and generates reset token (27.5ms)`
+  3. `✔ 3. Verify reset token endpoint validates genuine token and rejects invalid tokens (12.1ms)`
+  4. `✔ 4. Reset password rejects mismatched passwords and passwords violating complexity rules (10.3ms)`
+  5. `✔ 5. Reset password succeeds, invalidates previous sessions, and verifies email ownership (2557.3ms)`
+  6. `✔ 6. Rejects reset request when token has expired (493.2ms)`
+  7. `✔ 7. Rate limiting restricts excessive forgot-password requests (99.7ms)`
+  8. `✔ 8. Concurrent reset requests with the same token result in exactly one success and reject the duplicate (1146.7ms)`
 
 ### 2.2 Personal Profile Picture & Avatar Management Suite (`server/avatar.test.js`)
 - **Status**: PASSED (15 / 15 tests, 100%)
@@ -104,7 +105,7 @@ node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit \
 - **Test Details**:
   - NoSQL injection defense, JWT algorithm tampering rejection, malformed ObjectId handling, capacity overselling locks, and email casing normalization.
 
-**Backend Total**: **97 passed, 0 failed (100% pass rate)**.
+**Backend Total**: **98 passed, 0 failed (100% pass rate)**.
 
 ---
 
@@ -159,3 +160,4 @@ dist/index.html  1,805.48 kB │ gzip: 509.79 kB
 ```
 - **Exit Code**: 0
 - **Bundle**: Self-contained production `dist/index.html` single-file artifact with zero external asset dependencies.
+

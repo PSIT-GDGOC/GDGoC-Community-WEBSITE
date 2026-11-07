@@ -132,3 +132,4 @@ A rigorous application security assessment was conducted against the GDGoC PSIT 
 2. **Transactional Email**: Configure `RESEND_API_KEY` and set `EMAIL_FROM` to an authorized campus domain address with valid SPF, DKIM, and DMARC DNS records.
 3. **Storage Provider**: Set `STORAGE_PROVIDER=mongodb` or `STORAGE_PROVIDER=cloudinary` in production to ensure avatars and posters persist across container restarts.
 4. **HTTPS Enforcement**: Ensure the production reverse proxy (Cloudflare, Vercel, Nginx) forces HTTPS and sets the `Secure` flag on session cookies (`NODE_ENV=production`).
+

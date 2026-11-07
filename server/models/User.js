@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema(
 
 export function publicUser(u) {
   return {
+    id: u._id ? u._id.toString() : (u.id || undefined),
     name: u.name,
     email: u.email,
     role: u.role,

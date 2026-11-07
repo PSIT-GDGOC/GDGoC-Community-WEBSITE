@@ -221,33 +221,42 @@ router.post("/reset-password", async (req, res) => {
   }
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const resetRecord = await PasswordReset.findOne({
-    email,
-    tokenHash,
-    expiresAt: { $gt: new Date() },
-    usedAt: null,
-  });
-
-  if (!resetRecord) {
-    return res.status(400).json({ message: "Reset link is invalid or has expired." });
-  }
 
   const user = await User.findOne({ email }).select("+password");
   if (!user) {
     return res.status(400).json({ message: "Reset link is invalid or has expired." });
   }
 
-  // Atomically delete token to enforce single-use
-  await PasswordReset.deleteOne({ _id: resetRecord._id });
-
   const hashedPassword = await bcrypt.hash(password, 12);
-  user.password = hashedPassword;
-  // Invalidate all existing sessions across devices
-  user.tokenVersion = (user.tokenVersion || 0) + 1;
-  // Account ownership verified through successful token delivery and redemption
-  user.emailVerified = true;
-  user.emailVerifiedAt = new Date();
-  await user.save();
+
+  // Atomically consume the token to enforce single-use under concurrent requests
+  const resetRecord = await PasswordReset.findOneAndDelete({
+    email,
+    tokenHash,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!resetRecord) {
+    return res.status(400).json({ message: "Reset link is invalid or has expired." });
+  }
+
+  try {
+    user.password = hashedPassword;
+    // Invalidate all existing sessions across devices
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    // Account ownership verified through successful token delivery and redemption
+    user.emailVerified = true;
+    user.emailVerifiedAt = new Date();
+    await user.save();
+  } catch (err) {
+    // Prevent inconsistent state: restore token if database update fails
+    await PasswordReset.create({
+      email,
+      tokenHash,
+      expiresAt: resetRecord.expiresAt,
+    }).catch(() => {});
+    throw err;
+  }
 
   await clearAuthFailures(email);
 

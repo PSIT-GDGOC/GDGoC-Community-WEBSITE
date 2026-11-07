@@ -316,4 +316,47 @@ describe("Password Recovery & Account Verification Security Suite", () => {
     assert.equal(blockedRes.status, 429);
     assert.match(blockedRes.data.message, /too many password reset requests/i);
   });
+
+  it("8. Concurrent reset requests with the same token result in exactly one success and reject the duplicate", async () => {
+    await AuthFailure.deleteMany({ key: { $regex: /forgot/ } });
+    const testEmail = `concurrent.reset.${Date.now()}@psit.ac.in`;
+    const salt = await bcrypt.genSalt(10);
+    const pwd = await bcrypt.hash("InitialPass123!", salt);
+    const concurrentUser = await User.create({
+      name: "Concurrent Test User",
+      email: testEmail,
+      password: pwd,
+      role: "student",
+      branch: "CSE",
+      year: 2,
+    });
+
+    const forgotRes = await apiCall("/auth/forgot-password", {
+      method: "POST",
+      body: { email: testEmail },
+    });
+    const token = forgotRes.data.testResetToken;
+    assert.ok(token);
+
+    // Fire two simultaneous reset requests with the same token
+    const [res1, res2] = await Promise.all([
+      apiCall("/auth/reset-password", {
+        method: "POST",
+        body: { email: testEmail, token, password: "ConcurPass123!", confirm: "ConcurPass123!" },
+      }),
+      apiCall("/auth/reset-password", {
+        method: "POST",
+        body: { email: testEmail, token, password: "ConcurPass123!", confirm: "ConcurPass123!" },
+      }),
+    ]);
+
+    const statuses = [res1.status, res2.status].sort();
+    assert.deepEqual(
+      statuses,
+      [200, 400],
+      "Exactly one concurrent request must succeed and the other must be rejected"
+    );
+
+    await User.deleteOne({ _id: concurrentUser._id });
+  });
 });

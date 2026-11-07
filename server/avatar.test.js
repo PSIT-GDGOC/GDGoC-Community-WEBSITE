@@ -172,6 +172,24 @@ describe("Personal Profile Picture & Avatar Management Suite", () => {
     assert.equal(pub.avatarUrl, updated.avatarUrl);
     assert.equal(pub.avatarPublicId, undefined);
     assert.equal(pub.avatarProvider, undefined);
+
+    // Verify actual image retrieval over HTTP GET
+    const baseOrigin = API.replace(/\/api(\/v\d+)?\/?$/, "");
+    const imgUrl = res.data.user.avatarUrl.startsWith("http")
+      ? res.data.user.avatarUrl
+      : `${baseOrigin}${res.data.user.avatarUrl}`;
+    const imgFetch = await fetch(imgUrl);
+    assert.equal(imgFetch.status, 200, "Uploaded avatar must be retrievable over HTTP GET");
+    assert.match(imgFetch.headers.get("content-type") || "", /image\/(png|webp)/);
+    const imgBuffer = Buffer.from(await imgFetch.arrayBuffer());
+    assert.ok(imgBuffer.length > 0, "Retrieved image must contain valid binary data");
+
+    // Simulate page refresh: query GET /users/me with session cookie, then retrieve image again
+    const meRes = await apiCall("/users/me", { cookie: cookieA });
+    assert.equal(meRes.status, 200);
+    assert.equal(meRes.data.avatarUrl, res.data.user.avatarUrl);
+    const refreshedImgFetch = await fetch(imgUrl);
+    assert.equal(refreshedImgFetch.status, 200, "Avatar must retrieve successfully after simulated page refresh");
   });
 
   it("2. Successfully uploads a valid JPEG avatar using binary payload", async () => {
@@ -316,6 +334,15 @@ describe("Personal Profile Picture & Avatar Management Suite", () => {
     if (provider === "local" && publicId) {
       const filePath = path.join(process.cwd(), "uploads", "avatars", publicId);
       assert.equal(fs.existsSync(filePath), false);
+    }
+
+    if (userBefore.avatarUrl) {
+      const baseOrigin = API.replace(/\/api(\/v\d+)?\/?$/, "");
+      const deletedImgUrl = userBefore.avatarUrl.startsWith("http")
+        ? userBefore.avatarUrl
+        : `${baseOrigin}${userBefore.avatarUrl}`;
+      const deletedFetch = await fetch(deletedImgUrl);
+      assert.equal(deletedFetch.status, 404, "Deleted avatar must return 404 on HTTP GET");
     }
 
     // Double deletion should return 400

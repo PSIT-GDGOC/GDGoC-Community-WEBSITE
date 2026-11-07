@@ -25,6 +25,9 @@ function initialsOf(name: string) {
 }
 
 function memberIdOf(user: Profile): string {
+  if (user.enrollmentNo && user.enrollmentNo.trim()) {
+    return user.enrollmentNo.trim();
+  }
   if (user.id || user._id) {
     return `GDG-${String(user.id || user._id).slice(-6).toUpperCase()}`;
   }
@@ -240,7 +243,7 @@ export default function MemberCard({
                   <Stat label="Attended" value={attended} href="#/tickets" />
                   <Stat
                     label="Registered"
-                    value={registered ?? (attended != null && upcoming != null ? attended + upcoming : null)}
+                    value={registered}
                     href="#/tickets"
                   />
                 </div>
@@ -284,11 +287,19 @@ export default function MemberCard({
                 </p>
               </div>
 
-              {/* Verified Status Tag */}
+              {/* Verified Status Tag based on authentic email verification */}
               <div className="mx-auto flex max-w-xs items-center justify-center gap-2 border-2 border-ink bg-bg p-2 text-center shadow-[3px_3px_0_var(--color-ink)]">
-                <span className="h-2 w-2 rounded-full bg-ggreen animate-pulse" />
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    user.emailVerified ? "bg-ggreen animate-pulse" : "bg-gyellow"
+                  }`}
+                />
                 <span className="font-mono text-[11px] font-bold tracking-wider text-ink uppercase">
-                  Verified Chapter Member
+                  {user.role === "admin"
+                    ? "Lead Chapter Organizer"
+                    : user.emailVerified
+                    ? "Verified Chapter Member"
+                    : "Member · Unverified"}
                 </span>
               </div>
 
@@ -311,8 +322,14 @@ export default function MemberCard({
                   <span className="font-semibold text-ink">{user.year ? `Year ${user.year}` : "–"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-bold text-muted">Standing:</span>
-                  <span className="font-bold text-ggreen">Good Standing</span>
+                  <span className="font-bold text-muted">Account:</span>
+                  <span
+                    className={`font-bold ${
+                      user.emailVerified ? "text-ggreen" : "text-gyellow"
+                    }`}
+                  >
+                    {user.emailVerified ? "Verified Email" : "Pending Verification"}
+                  </span>
                 </div>
               </div>
 
