@@ -315,14 +315,14 @@ export async function uploadPoster(fileBuffer, ext) {
 }
 
 /**
- * Upload avatar to Cloudinary with eager crop and optimization
+ * Upload avatar / banner / project image to Cloudinary with appropriate crop rules
  */
-async function uploadAvatarToCloudinary(fileBuffer, ext, config) {
+async function uploadImageToCloudinary(fileBuffer, ext, { folder, prefix, transformation }) {
+  const config = getCloudinaryConfig();
+  if (!config) return null;
   const { cloudName, apiKey, apiSecret } = config;
   const timestamp = Math.floor(Date.now() / 1000);
-  const publicId = `avatar_${crypto.randomBytes(16).toString("hex")}`;
-  const folder = "gdgoc-avatars";
-  const transformation = "c_fill,w_400,h_400,g_face,q_auto,f_auto";
+  const publicId = `${prefix}_${crypto.randomBytes(16).toString("hex")}`;
 
   const paramsToSign = { folder, public_id: publicId, timestamp, transformation };
   const signature = generateCloudinarySignature(paramsToSign, apiSecret);
@@ -346,7 +346,7 @@ async function uploadAvatarToCloudinary(fileBuffer, ext, config) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Cloudinary avatar upload failed with status ${response.status}: ${errorText}`);
+    throw new Error(`Cloudinary ${prefix} upload failed with status ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
@@ -358,19 +358,19 @@ async function uploadAvatarToCloudinary(fileBuffer, ext, config) {
 }
 
 /**
- * Upload avatar to local disk
+ * Upload image to local disk
  */
-async function uploadAvatarToLocalDisk(fileBuffer, ext) {
-  const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
+async function uploadImageToLocalDisk(fileBuffer, ext, { subdir, prefix, urlPrefix }) {
+  const uploadsDir = path.join(process.cwd(), "uploads", ...(subdir ? [subdir] : []));
   await fs.promises.mkdir(uploadsDir, { recursive: true });
 
-  const fileName = `avatar_${crypto.randomBytes(16).toString("hex")}.${ext}`;
+  const fileName = `${prefix}_${crypto.randomBytes(16).toString("hex")}.${ext}`;
   const filePath = path.join(uploadsDir, fileName);
 
   await fs.promises.writeFile(filePath, fileBuffer);
 
   return {
-    url: `/uploads/avatars/${fileName}`,
+    url: `${urlPrefix}/${fileName}`,
     publicId: fileName,
     provider: "local",
   };
@@ -384,12 +384,20 @@ export async function uploadAvatar(fileBuffer, ext) {
   const cloudinaryConfig = getCloudinaryConfig();
 
   if (cloudinaryConfig) {
-    return uploadAvatarToCloudinary(sanitizedBuffer, ext, cloudinaryConfig);
+    return uploadImageToCloudinary(sanitizedBuffer, ext, {
+      folder: "gdgoc-avatars",
+      prefix: "avatar",
+      transformation: "c_fill,w_400,h_400,g_face,q_auto,f_auto",
+    });
   }
 
   // In test environment, use local disk storage to satisfy test assertions
   if (process.env.NODE_ENV === "test" && process.env.STORAGE_PROVIDER !== "mongodb") {
-    return uploadAvatarToLocalDisk(sanitizedBuffer, ext);
+    return uploadImageToLocalDisk(sanitizedBuffer, ext, {
+      subdir: "avatars",
+      prefix: "avatar",
+      urlPrefix: "/uploads/avatars",
+    });
   }
 
   // Persistent storage in MongoDB for development and production without Cloudinary
@@ -397,7 +405,59 @@ export async function uploadAvatar(fileBuffer, ext) {
 }
 
 /**
- * Delete avatar from Cloudinary, MongoDB, or local disk
+ * Upload profile cover banner entry point (preserves widescreen landscape ratio)
+ */
+export async function uploadBanner(fileBuffer, ext) {
+  const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
+  const cloudinaryConfig = getCloudinaryConfig();
+
+  if (cloudinaryConfig) {
+    return uploadImageToCloudinary(sanitizedBuffer, ext, {
+      folder: "gdgoc-banners",
+      prefix: "banner",
+      transformation: "c_limit,w_1600,q_auto,f_auto",
+    });
+  }
+
+  if (process.env.NODE_ENV === "test" && process.env.STORAGE_PROVIDER !== "mongodb") {
+    return uploadImageToLocalDisk(sanitizedBuffer, ext, {
+      subdir: "banners",
+      prefix: "banner",
+      urlPrefix: "/uploads/banners",
+    });
+  }
+
+  return uploadToMongoDB(sanitizedBuffer, ext, "banner");
+}
+
+/**
+ * Upload featured project cover image entry point (preserves landscape aspect ratio)
+ */
+export async function uploadProjectImage(fileBuffer, ext) {
+  const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
+  const cloudinaryConfig = getCloudinaryConfig();
+
+  if (cloudinaryConfig) {
+    return uploadImageToCloudinary(sanitizedBuffer, ext, {
+      folder: "gdgoc-projects",
+      prefix: "project",
+      transformation: "c_limit,w_1200,q_auto,f_auto",
+    });
+  }
+
+  if (process.env.NODE_ENV === "test" && process.env.STORAGE_PROVIDER !== "mongodb") {
+    return uploadImageToLocalDisk(sanitizedBuffer, ext, {
+      subdir: "projects",
+      prefix: "project",
+      urlPrefix: "/uploads/projects",
+    });
+  }
+
+  return uploadToMongoDB(sanitizedBuffer, ext, "project");
+}
+
+/**
+ * Delete avatar, banner, or project image from Cloudinary, MongoDB, or local disk
  */
 export async function deleteAvatar(publicId, provider) {
   if (!publicId) return;
@@ -439,10 +499,13 @@ export async function deleteAvatar(publicId, provider) {
   // Local storage cleanup
   try {
     const fileName = path.basename(publicId);
-    const avatarPath = path.join(process.cwd(), "uploads", "avatars", fileName);
-    const directPath = path.join(process.cwd(), "uploads", fileName);
-    await fs.promises.unlink(avatarPath).catch(() => {});
-    await fs.promises.unlink(directPath).catch(() => {});
+    const paths = [
+      path.join(process.cwd(), "uploads", "avatars", fileName),
+      path.join(process.cwd(), "uploads", "banners", fileName),
+      path.join(process.cwd(), "uploads", "projects", fileName),
+      path.join(process.cwd(), "uploads", fileName),
+    ];
+    await Promise.all(paths.map((p) => fs.promises.unlink(p).catch(() => {})));
   } catch {
     // Ignore cleanup errors
   }

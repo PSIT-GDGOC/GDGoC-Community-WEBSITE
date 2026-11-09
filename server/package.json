@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node --watch --env-file-if-exists=.env index.js",
     "start": "node --env-file-if-exists=.env index.js",
-    "test": "node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit api.test.js utils/tickets.test.js edge.test.js admin.test.js remediation.test.js email-allowlist.test.js avatar.test.js password-reset.test.js",
+    "test": "node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit api.test.js utils/tickets.test.js edge.test.js admin.test.js remediation.test.js email-allowlist.test.js avatar.test.js password-reset.test.js identity-hub.test.js",
+    "test:hub": "node --env-file-if-exists=.env --test --test-force-exit identity-hub.test.js",
     "test:reset": "node --env-file-if-exists=.env --test --test-force-exit password-reset.test.js",
     "test:emails": "node --env-file-if-exists=.env --test --test-force-exit email-allowlist.test.js",
     "test:avatar": "node --env-file-if-exists=.env --test --test-force-exit avatar.test.js",

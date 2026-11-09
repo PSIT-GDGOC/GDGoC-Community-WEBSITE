@@ -194,3 +194,111 @@ export function safeNext(next) {
   }
   return "/profile";
 }
+
+export const BANNER_THEMES = [
+  "google-brand",
+  "midnight-slate",
+  "cyber-grid",
+  "sunset-gradient",
+  "emerald-code",
+  "custom",
+];
+
+export const ACCENT_COLORS = ["gblue", "gred", "gyellow", "ggreen", "slate"];
+
+export const CARD_THEMES = ["default", "dark", "minimal", "accent"];
+
+export const SKILL_CATEGORIES = [
+  "Programming",
+  "Frontend",
+  "Backend",
+  "Databases",
+  "Cloud & DevOps",
+  "AI & ML",
+  "Design",
+  "Developer Tools",
+  "Other",
+];
+
+export function isValidUrl(url) {
+  if (!url || typeof url !== "string") return true;
+  const trimmed = url.trim();
+  if (!trimmed) return true;
+  if (trimmed.length > 500) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function validateProjectInput(p) {
+  if (!p || typeof p !== "object") {
+    return "Invalid project data.";
+  }
+  const title = String(p.title ?? "").trim();
+  if (title.length < 2 || title.length > 80) {
+    return "Project title must be 2 to 80 characters.";
+  }
+  const desc = String(p.description ?? "").trim();
+  if (desc.length > 280) {
+    return "Project description must be 280 characters or fewer.";
+  }
+  if (p.techStack && !Array.isArray(p.techStack)) {
+    return "Tech stack must be an array of tags.";
+  }
+  if (Array.isArray(p.techStack) && p.techStack.length > 10) {
+    return "Maximum 10 technology tags per project.";
+  }
+  if (p.githubUrl && !isValidUrl(p.githubUrl)) {
+    return "GitHub URL must be a valid http(s) URL.";
+  }
+  if (p.liveUrl && !isValidUrl(p.liveUrl)) {
+    return "Live Demo URL must be a valid http(s) URL.";
+  }
+  if (p.imageUrl) {
+    const imgStr = String(p.imageUrl).trim();
+    const safeRelative = /^\/(api\/media|uploads)\/[a-zA-Z0-9._/-]+$/.test(imgStr);
+    if (!safeRelative && !isValidUrl(imgStr)) {
+      return "Project image URL must be a valid http(s) URL or uploaded media path.";
+    }
+  }
+  return null;
+}
+
+export function validateSkillsInput(skills) {
+  if (!Array.isArray(skills)) {
+    return "Skills must be an array.";
+  }
+  if (skills.length > 25) {
+    return "Maximum 25 skills allowed.";
+  }
+  for (const s of skills) {
+    if (!s || typeof s !== "object") {
+      return "Invalid skill format.";
+    }
+    const name = String(s.name ?? "").trim();
+    if (!name || name.length > 40) {
+      return "Each skill name must be between 1 and 40 characters.";
+    }
+    if (s.category && String(s.category).length > 40) {
+      return "Skill category must be 40 characters or fewer.";
+    }
+  }
+  return null;
+}
+
+export function validateSocialsInput(socials) {
+  if (!socials || typeof socials !== "object") return null;
+  const keys = ["github", "linkedin", "portfolio", "website", "twitter"];
+  for (const k of keys) {
+    if (socials[k]) {
+      const val = String(socials[k]).trim();
+      if (val && !isValidUrl(val)) {
+        return `${k.charAt(0).toUpperCase() + k.slice(1)} URL must be a valid http(s) URL.`;
+      }
+    }
+  }
+  return null;
+}
