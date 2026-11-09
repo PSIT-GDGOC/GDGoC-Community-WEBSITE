@@ -237,6 +237,7 @@ function Account({ user }: { user: Profile }) {
           upcoming={ready ? summary.upcoming.length : null}
           attended={ready ? summary.attended : null}
           registered={ready ? tickets.items.filter((t) => t.state !== "cancelled").length : null}
+          showEmail
         />
         <ProfileStatus user={user} />
       </aside>

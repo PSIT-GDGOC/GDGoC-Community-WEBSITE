@@ -1,114 +1,91 @@
 # GDGoC PSIT — Production Deployment & Rollout Checklist
 
-**Target Branch**: `remediation/fullstack-profile-hardening`  
+**Target Branch**: `feat/dynamic-identity-hub` (PR #25 targeting `main`)  
 **Target Environment**: Production / Staging  
 **Application**: GDGoC PSIT Community Website  
-**Date**: November 7, 2026  
+**Updated**: November 9, 2026  
 
-Follow this checklist strictly during deployment to ensure zero downtime, secure transition of user sessions, and database integrity.
+Follow this checklist during deployment to ensure zero downtime, persistent media storage, valid TTL/ownership database indexes, and verified smoke behavior.
 
 ---
 
 ## 1. Pre-Deployment Preparation
 
 ### 1.1 Database Snapshot & Backup
-Execute a complete database backup prior to deploying new code or restarting containers:
+Execute a database backup before rolling out new server code:
 ```bash
-mongodump --uri="<PRODUCTION_MONGO_URI>" --out="/backups/gdgoc-pre-profile-remediation-$(date +%F)"
+mongodump --uri="<PRODUCTION_MONGO_URI>" --out="/backups/gdgoc-identity-hub-$(date +%F)"
 ```
 
-### 1.2 Verify Environment Variables
-Ensure the following variables are defined in the deployment environment (e.g. Render, Railway, Fly.io, Vercel, Docker):
+### 1.2 Environment Variables
+Confirm these variables in your backend runtime environment (`server/index.js`, `server/utils/storage.js`, `server/utils/email.js`, `server/utils/domain.js`):
 
-| Variable | Required | Description | Example / Recommended Value |
+| Variable | Required | Description | Example / Notes |
 |---|---|---|---|
-| `MONGO_URI` | **Yes** | Production MongoDB connection string with TLS/SSL | `mongodb+srv://user:pass@cluster.mongodb.net/gdgoc?retryWrites=true&w=majority` |
-| `JWT_SECRET` | **Yes** | Cryptographic random secret for signing session cookies | 64+ char random string (`openssl rand -base64 64`) |
-| `STORAGE_PROVIDER` | **Yes** | Persistent media storage engine | `mongodb` (recommended native storage) or `cloudinary` |
-| `CLOUDINARY_URL` | Optional | Cloudinary API string (only if `STORAGE_PROVIDER=cloudinary`) | `cloudinary://key:secret@cloud_name` |
-| `RESEND_API_KEY` | **Yes** | API key for transactional password reset emails | `re_...` |
-| `EMAIL_FROM` | **Yes** | Verified sender email address | `GDGoC PSIT <noreply@psit.ac.in>` |
-| `CLIENT_URL` | **Yes** | Fully qualified public frontend URL | `https://gdgoc-community-website.vercel.app` |
-| `ALLOWED_EMAIL_DOMAINS` | **Yes** | Allowed campus email domains | `psit.ac.in` |
+| `MONGO_URI` | **Yes** | Production MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/gdgoc?retryWrites=true&w=majority` |
+| `JWT_SECRET` | **Yes** | Cryptographic secret (`>=64` bytes) for session JWT signing | `openssl rand -base64 64` |
+| `CLIENT_URL` | **Yes** | Allowed frontend origin(s), comma-separated | `https://gdgoc-community-website.vercel.app` |
 | `NODE_ENV` | **Yes** | Runtime environment mode | `production` |
-| `PORT` | Optional | Application listening port (defaults to 5000) | `5000` |
+| `ALLOWED_EMAIL_DOMAINS` | **Yes (Prod)** | Campus email domains allowlist (`CAMPUS_EMAIL_DOMAINS` also supported) | `psit.ac.in` |
+| `CLOUDINARY_URL` *(or `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`)* | Recommended | Persistent image CDN for avatars (`gdgoc-avatars`), banners (`gdgoc-banners`), project images (`gdgoc-projects`), and event posters | `cloudinary://key:secret@cloud_name` |
+| `STORAGE_PROVIDER` / `ALLOW_MONGODB_STORAGE` | Conditional | If Cloudinary is not configured: avatars, banners, and project images default to MongoDB (`Media`); event posters in `production` require `ALLOW_MONGODB_STORAGE=true` (and `STORAGE_PROVIDER=mongodb` unless Cloudinary is set) | `STORAGE_PROVIDER=mongodb`, `ALLOW_MONGODB_STORAGE=true` |
+| `RESEND_API_KEY` | **Yes (Prod)** | Resend API key for password reset delivery | `re_...` |
+| `EMAIL_FROM` | Optional | Verified sender identity (defaults to `GDGoC PSIT <noreply@psit.ac.in>`) | `GDGoC PSIT <noreply@psit.ac.in>` |
+| `COOKIE_DOMAIN` | Optional | Cross-subdomain cookie scope if API and UI share a root domain | `.example.com` |
+| `PORT` | Optional | API listen port (defaults to `5000`) | `5000` |
 
 ---
 
-## 2. Storage & Database Setup
+## 2. Database Schema & Media Storage Notes
 
-### 2.1 Native MongoDB Media Storage (Recommended)
-If `STORAGE_PROVIDER=mongodb`:
-- All user avatar photos and event posters are stored in the native MongoDB `Media` collection (`server/models/Media.js`).
-- Media survives container rebuilds, works without third-party cloud accounts, and scales with your MongoDB cluster.
-- Media files are served via `GET /api/media/:id` and cached with `Cache-Control: public, max-age=86400, stale-while-revalidate=604800`.
+### 2.1 Zero-Downtime Additive Schema Changes
+All Dynamic Identity Hub additions in [`server/models/User.js`](server/models/User.js) (`headline`, `college`, `specialization`, `bannerTheme`, `bannerUrl`, `bannerPublicId`, `bannerProvider`, `accentColor`, `cardTheme`, `socials`, `skills`, `projects`, `pendingProjectImages`, `memberVerified`, `memberVerifiedAt`, `privacy`) and [`server/models/Media.js`](server/models/Media.js) (`owner` reference + extended `type` enum `["avatar", "poster", "banner", "project"]`) are strictly additive with backward-compatible defaults. Existing member documents read cleanly without a blocking migration.
 
-### 2.2 Password Reset TTL Index Verification
-The `PasswordReset` model defines an automatic TTL index for token pruning:
+> **Legacy Media Note**: Pre-existing `Media` documents created before `Media.owner` was introduced have `owner: null`. Existing projects that already point to those images continue to work via each project's own `imageUrl` reference check; any newly uploaded project image automatically binds `owner: req.user._id`.
+
+### 2.2 Media Storage (`Media` Collection vs Cloudinary)
+- **Native MongoDB Storage (`Media` collection)**:
+  - Stores binary buffers for `avatar`, `poster`, `banner`, and `project` assets and streams them via `GET /api/media/:id` (and `/api/v1/media/:id`) with `Cache-Control: public, max-age=31536000, immutable` and `X-Content-Type-Options: nosniff`.
+- **Cloudinary Storage**:
+  - Signs uploads via SHA-1 using `CLOUDINARY_*` credentials and deletes replaced assets automatically via DB-first cleanup (`executeDbFirstMediaClear`).
+
+### 2.3 Index Verification
+Mongoose registers schema indexes on startup (`User.init()`, model initialization). Confirm the password reset TTL index (`3600s` expiry) and `Media.owner` index in MongoDB if inspecting manually:
 ```javascript
-passwordResetSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+db.passwordresets.getIndexes(); // expects { expiresAt: 1 } with expireAfterSeconds: 3600
+db.media.getIndexes();          // expects { owner: 1 }
 ```
-Upon server startup, Mongoose registers this index. Verify via Mongo Shell:
-```javascript
-db.password_resets.getIndexes();
-// Confirm { "expiresAt": 1 } has "expireAfterSeconds": 0
-```
+If syncing core registration/email indexes via the helper script (`server/migrate.js` runs in `--dry-run` by default), never pass `--apply` without a verified backup (`--confirm-backup`) and explicit policy flag.
 
 ---
 
-## 3. Deployment Procedure
+## 3. Build & Deployment Steps
 
-### 3.1 Backend Deployment (API Server)
-1. Pull branch `remediation/fullstack-profile-hardening`.
-2. Install production dependencies:
+### 3.1 Backend Deployment (`server/`)
+1. Checkout branch `feat/dynamic-identity-hub` (post PR #25 merge/review).
+2. Install production dependencies strictly from the updated lockfile (includes `body-parser@2.4.0`):
    ```bash
    cd server
    npm ci --omit=dev
    ```
-3. Run test suite verification:
-   ```bash
-   npm test
-   ```
-4. Start process manager (e.g. PM2 or Docker container):
-   ```bash
-   node index.js
-   ```
+3. Run verification tests against staging/CI MongoDB (`npm test`) if running in CI/CD before promotion.
+4. Start the API (`node index.js` or process manager with `.env` loaded).
 
-### 3.2 Frontend Deployment (Client Single-File Bundle)
-1. In repository root:
+### 3.2 Frontend Deployment (Repository Root)
+1. Install dependencies and run the full check + build pipeline:
    ```bash
    npm ci
    npm run check
    ```
-2. Verify `dist/index.html` was generated.
-3. Deploy `dist/index.html` to static hosting (Vercel, Cloudflare Pages, Netlify).
+2. Deploy the self-contained single-file bundle `dist/index.html` (generated by `vite-plugin-singlefile`) to your static host.
 
 ---
 
-## 4. Post-Deployment Verification (Smoke Tests)
+## 4. Post-Deployment Smoke Verification Checklist
 
-Execute the following verification steps on the live production URL:
-
-- [ ] **4.1 Health Check**
-  - Query `GET /api/health` -> verify `{ status: "ok", uptime: ..., database: "connected" }`.
-- [ ] **4.2 Forgot Password Flow**
-  - Navigate to `#/login`, click "Forgot password?".
-  - Submit registered email -> confirm generic confirmation message appears without errors.
-  - Verify transactional reset email arrives in inbox with valid 15-minute token link.
-  - Open reset link, set new password -> confirm successful reset and redirect to login.
-  - Log in with new password -> confirm authentication succeeds and prior sessions are invalidated.
-- [ ] **4.3 Profile Avatar Upload & Display**
-  - Navigate to `#/profile`.
-  - Upload a JPG/PNG/WebP image.
-  - Use crop modal with zoom and arrow keys; click "Save photo".
-  - Confirm avatar appears immediately on member card and navigation bar.
-  - Hard refresh the page -> confirm image persists.
-  - Test "Replace photo" and "Remove photo".
-- [ ] **4.4 Digital Member Card Redesign**
-  - Inspect Member Card: confirm Google 4-color stripe, role badge, initials fallback, member ID, and bio.
-  - Click "Pass ↺" -> confirm card flips to reverse Chapter Pass view with verified badge and barcode.
-  - Click "Front ↺" -> confirm smooth return to front view.
-  - Verify `Upcoming`, `Attended`, and `Registered` activity counts match verified ticket data.
-- [ ] **4.5 Mobile Responsiveness**
-  - Open Chrome DevTools Device Mode; test viewports 320px, 360px, 390px, 768px, 1024px.
-  - Confirm no horizontal scrolling or clipped cards.
+- [ ] **Health Check**: Query `GET /api/health` → expect HTTP `200` with `{ status: "healthy", database: "connected" }`.
+- [ ] **Forgot Password Flow**: On `#/login`, verify `"Forgot password?"` sends generic `200`, delivers 15-minute reset link, resets password once (second use rejected), and invalidates prior sessions (`tokenVersion`). Confirm zero password-change inputs exist on `#/profile`.
+- [ ] **Avatar & Custom Banner Lifecycle**: On `#/profile`, upload/crop/save an avatar and upload/reset a custom cover banner; hard-refresh and confirm persistence via `/api/media/...` (or Cloudinary URL); test deletion and verify old asset URL returns `404`.
+- [ ] **Dynamic Identity Hub & Editor Guard**: Edit headline, categorized skills, social links (`privacy.showEmail` stays off by default), and up to 6 featured projects (plus project image upload & reorder). Confirm `Escape` / `Done` with unsaved edits prompts `"Discard unsaved changes?"`.
+- [ ] **Membership Card & Ticket Resilience**: Verify Member Card flips smoothly front↔pass, shows `"Community Member (Email Verified)"` vs `"Verified Chapter Member"` strictly according to `emailVerified`/`memberVerified`, and matches verified `/api/tickets` counts.
+- [ ] **Responsive Mobile Layout**: Spot-check `#/profile` and the editor modal at `320px` and `390px` viewport widths to confirm `0px` horizontal overflow.

@@ -507,7 +507,7 @@ router.get("/users", async (req, res) => {
     ]);
 
     res.json({
-      users: users.map(publicUser),
+      users: users.map((user) => publicUser(user, { isSelf: true })),
       total,
       page: pageNum,
       totalPages: Math.ceil(total / limitNum),
@@ -550,7 +550,7 @@ router.patch("/users/:email/role", async (req, res) => {
     target.role = role;
     await target.save();
 
-    res.json({ message: `Role updated to ${role}.`, user: publicUser(target) });
+    res.json({ message: `Role updated to ${role}.`, user: publicUser(target, { isSelf: true }) });
   } catch (error) {
     res.status(500).json({ message: "Failed to update user role." });
   }

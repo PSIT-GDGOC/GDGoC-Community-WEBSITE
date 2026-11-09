@@ -8,7 +8,10 @@ const YEAR_COLORS: GColor[] = ["gblue", "gred", "gyellow", "ggreen"];
 const FOUR: GColor[] = ["gblue", "gred", "gyellow", "ggreen"];
 const MAX_TILT = 6;
 
-function cardColor(year?: number): GColor {
+function cardColor(year?: number, accent?: string): GColor {
+  if (accent && ["gblue", "gred", "gyellow", "ggreen"].includes(accent)) {
+    return accent as GColor;
+  }
   if (!year) {
     return "gblue";
   }
@@ -87,13 +90,15 @@ export default function MemberCard({
   upcoming,
   attended,
   registered,
+  showEmail,
 }: {
   user: Profile;
   upcoming?: number | null;
   attended?: number | null;
   registered?: number | null;
+  showEmail?: boolean;
 }) {
-  const color = cardColor(user.year);
+  const color = cardColor(user.year, user.accentColor);
   const initials = initialsOf(user.name);
   const memberId = memberIdOf(user);
   const finePointer = useFinePointer();
@@ -123,8 +128,9 @@ export default function MemberCard({
   };
 
   const showAvatar = Boolean(user.avatarUrl && !imgError);
-
   const hasActivityStats = upcoming !== undefined || attended !== undefined || registered !== undefined;
+  const theme = user.cardTheme || "default";
+  const accentStripe = user.accentColor === "slate" ? "#202124" : COLOR_HEX[color];
 
   return (
     <figure
@@ -135,8 +141,15 @@ export default function MemberCard({
       <div
         onPointerMove={onPointerMove}
         onPointerLeave={() => setTilt({ x: 0, y: 0 })}
-        className="relative flex min-h-[460px] w-full flex-col overflow-hidden border-[3px] border-ink bg-bg shadow-[8px_8px_0_var(--color-ink)] transition-transform duration-300 ease-out"
+        className={`relative flex min-h-[460px] w-full flex-col overflow-hidden border-[3px] border-ink shadow-[8px_8px_0_var(--color-ink)] transition-transform duration-300 ease-out ${
+          theme === "dark"
+            ? "bg-[#111419] text-white"
+            : theme === "accent"
+            ? "text-ink"
+            : "bg-bg text-ink"
+        }`}
         style={{
+          backgroundColor: theme === "accent" ? PANEL_HEX[color] : undefined,
           transform: reducedMotion
             ? undefined
             : `rotateX(${tilt.x.toFixed(2)}deg) rotateY(${tilt.y.toFixed(2)}deg)`,
@@ -144,9 +157,13 @@ export default function MemberCard({
       >
         {/* Brand 4-Color Stripe Header */}
         <div className="flex h-2.5 w-full shrink-0" aria-hidden="true">
-          {FOUR.map((c) => (
-            <span key={c} className="flex-1" style={{ background: COLOR_HEX[c] }} />
-          ))}
+          {theme === "accent" ? (
+            <span className="flex-1" style={{ background: accentStripe }} />
+          ) : (
+            FOUR.map((c) => (
+              <span key={c} className="flex-1" style={{ background: COLOR_HEX[c] }} />
+            ))
+          )}
         </div>
 
         {!flipped ? (
@@ -155,13 +172,15 @@ export default function MemberCard({
           /* ======================================================== */
           <div className="relative flex flex-1 flex-col justify-between p-5 pt-3">
             {/* Background watermark badge */}
-            <span
-              className="pointer-events-none absolute inset-0 grid place-items-center opacity-[0.04]"
-              style={{ color: COLOR_HEX[color] }}
-              aria-hidden="true"
-            >
-              <SuitGlyph suit={SUIT_FOR[color]} size={260} />
-            </span>
+            {theme !== "minimal" && (
+              <span
+                className="pointer-events-none absolute inset-0 grid place-items-center opacity-[0.04]"
+                style={{ color: COLOR_HEX[color] }}
+                aria-hidden="true"
+              >
+                <SuitGlyph suit={SUIT_FOR[color]} size={260} />
+              </span>
+            )}
 
             {/* Corner Playing-Card Indices */}
             <CornerIndex initials={initials} color={color} />
@@ -169,7 +188,9 @@ export default function MemberCard({
 
             {/* Top Bar: Chapter ID & Flip Button */}
             <div className="relative z-10 flex items-center justify-between pl-6 pr-1">
-              <span className="font-mono text-[10px] font-bold tracking-widest text-muted uppercase">
+              <span className={`font-mono text-[10px] font-bold tracking-widest uppercase ${
+                theme === "dark" ? "text-gray-400" : "text-muted"
+              }`}>
                 {memberId}
               </span>
               <button
@@ -192,10 +213,16 @@ export default function MemberCard({
                   className={`inline-flex items-center gap-1 border-2 border-ink px-2.5 py-0.5 font-mono text-[10px] font-bold tracking-wider uppercase shadow-[2px_2px_0_var(--color-ink)] ${
                     user.role === "admin"
                       ? "bg-gred text-white"
+                      : user.memberVerified
+                      ? "bg-ggreen text-white"
                       : "bg-wash-blue text-ink"
                   }`}
                 >
-                  {user.role === "admin" ? "⚡ Lead Organizer" : "GDGoC Member"}
+                  {user.role === "admin"
+                    ? "⚡ Lead Organizer"
+                    : user.memberVerified
+                    ? "Verified Member"
+                    : "GDGoC Member"}
                 </span>
               </div>
 
@@ -217,26 +244,45 @@ export default function MemberCard({
               </div>
 
               {/* Name & Academic Credentials */}
-              <figcaption className="mt-3 font-display text-xl sm:text-2xl leading-tight font-extrabold tracking-tight text-ink break-words">
+              <figcaption className={`mt-3 font-display text-xl sm:text-2xl leading-tight font-extrabold tracking-tight break-words ${
+                theme === "dark" ? "text-white" : "text-ink"
+              }`}>
                 {user.name}
               </figcaption>
-              <p className="mt-1 text-xs font-bold text-ink/75 sm:text-sm">
+              <p className={`mt-1 text-xs font-bold sm:text-sm ${
+                theme === "dark" ? "text-gray-300" : "text-ink/75"
+              }`}>
                 {details.join(" · ")}
               </p>
-              <p className="mt-0.5 max-w-full font-mono text-[11px] break-all text-muted">
-                {user.email}
-              </p>
+              {user.headline && (
+                <p className={`mt-1 max-w-[260px] text-[11px] font-semibold line-clamp-1 ${
+                  theme === "dark" ? "text-blue-300" : "text-gblue"
+                }`}>
+                  {user.headline}
+                </p>
+              )}
+              {(showEmail ?? Boolean(user.privacy?.showEmail)) && user.email && (
+                <p className={`mt-0.5 max-w-full font-mono text-[11px] break-all ${
+                  theme === "dark" ? "text-gray-400" : "text-muted"
+                }`}>
+                  {user.email}
+                </p>
+              )}
 
               {/* Bio quote if provided */}
               {user.bio && (
-                <div className="mt-2.5 max-w-[280px] rounded-xs border-l-2 border-ink bg-panel/60 px-2.5 py-1 text-left text-xs italic text-muted line-clamp-2">
+                <div className={`mt-2.5 max-w-[280px] rounded-xs border-l-2 border-ink px-2.5 py-1 text-left text-xs italic line-clamp-2 ${
+                  theme === "dark" ? "bg-white/10 text-gray-200" : "bg-panel/60 text-muted"
+                }`}>
                   “{user.bio}”
                 </div>
               )}
             </div>
 
             {/* Bottom Activity Stats & Membership Footer */}
-            <div className="relative z-10 mt-auto border-t-2 border-dashed border-ink/80 pt-3">
+            <div className={`relative z-10 mt-auto border-t-2 border-dashed pt-3 ${
+              theme === "dark" ? "border-gray-700" : "border-ink/80"
+            }`}>
               {hasActivityStats && (
                 <div className="mb-2.5 grid grid-cols-3 gap-2">
                   <Stat label="Upcoming" value={upcoming} href="#/tickets" />
@@ -249,9 +295,13 @@ export default function MemberCard({
                 </div>
               )}
 
-              <div className="flex items-center justify-between text-[11px] font-semibold text-muted">
+              <div className={`flex items-center justify-between pr-6 text-[11px] font-semibold ${
+                theme === "dark" ? "text-gray-400" : "text-muted"
+              }`}>
                 <span>Member since {memberSince}</span>
-                <span className="font-mono text-[10px] text-ink/60">PSIT Chapter</span>
+                <span className={`font-mono text-[10px] ${
+                  theme === "dark" ? "text-gray-500" : "text-ink/60"
+                }`}>PSIT Chapter</span>
               </div>
             </div>
           </div>
@@ -287,19 +337,27 @@ export default function MemberCard({
                 </p>
               </div>
 
-              {/* Verified Status Tag based on authentic email verification */}
+              {/* Verified Status Tag: Keep email verification separate from official membership verification */}
               <div className="mx-auto flex max-w-xs items-center justify-center gap-2 border-2 border-ink bg-bg p-2 text-center shadow-[3px_3px_0_var(--color-ink)]">
                 <span
-                  className={`h-2 w-2 rounded-full ${
-                    user.emailVerified ? "bg-ggreen animate-pulse" : "bg-gyellow"
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    user.role === "admin"
+                      ? "bg-gred animate-pulse motion-reduce:animate-none"
+                      : user.memberVerified
+                      ? "bg-ggreen animate-pulse motion-reduce:animate-none"
+                      : user.emailVerified
+                      ? "bg-gblue"
+                      : "bg-gyellow"
                   }`}
                 />
                 <span className="font-mono text-[11px] font-bold tracking-wider text-ink uppercase">
                   {user.role === "admin"
                     ? "Lead Chapter Organizer"
-                    : user.emailVerified
+                    : user.memberVerified
                     ? "Verified Chapter Member"
-                    : "Member · Unverified"}
+                    : user.emailVerified
+                    ? "Community Member (Email Verified)"
+                    : "Community Member (Unverified)"}
                 </span>
               </div>
 
@@ -321,8 +379,26 @@ export default function MemberCard({
                   <span className="font-bold text-muted">Year:</span>
                   <span className="font-semibold text-ink">{user.year ? `Year ${user.year}` : "–"}</span>
                 </div>
+                <div className="flex justify-between border-b border-ink/20 pb-1">
+                  <span className="font-bold text-muted">Membership:</span>
+                  <span
+                    className={`font-bold ${
+                      user.role === "admin"
+                        ? "text-gred"
+                        : user.memberVerified
+                        ? "text-ggreen"
+                        : "text-ink"
+                    }`}
+                  >
+                    {user.role === "admin"
+                      ? "Chapter Lead"
+                      : user.memberVerified
+                      ? "Official Member"
+                      : "Community Tier"}
+                  </span>
+                </div>
                 <div className="flex justify-between">
-                  <span className="font-bold text-muted">Account:</span>
+                  <span className="font-bold text-muted">Email Status:</span>
                   <span
                     className={`font-bold ${
                       user.emailVerified ? "text-ggreen" : "text-gyellow"

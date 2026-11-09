@@ -1,5 +1,20 @@
 const API = import.meta.env?.VITE_API_URL ?? "/api";
 
+export function safeExternalUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  const trimmed = String(url).trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export function resolveImageUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
@@ -55,11 +70,56 @@ export function isAllowedCampusEmail(
   return domains.some((allowed) => domain === allowed.toLowerCase());
 }
 
+export type SkillItem = {
+  name: string;
+  category: string;
+};
+
+export type ProjectItem = {
+  id?: string;
+  _id?: string;
+  title: string;
+  description: string;
+  techStack: string[];
+  githubUrl?: string;
+  liveUrl?: string;
+  imageUrl?: string | null;
+  featured?: boolean;
+  order?: number;
+  createdAt?: string;
+};
+
+export type SocialLinks = {
+  github?: string;
+  linkedin?: string;
+  portfolio?: string;
+  website?: string;
+  twitter?: string;
+};
+
+export type ProfilePrivacy = {
+  showEmail?: boolean;
+  showAttendance?: boolean;
+  showProjects?: boolean;
+};
+
+export type BannerTheme =
+  | "google-brand"
+  | "midnight-slate"
+  | "cyber-grid"
+  | "sunset-gradient"
+  | "emerald-code"
+  | "custom";
+
+export type AccentColor = "gblue" | "gred" | "gyellow" | "ggreen" | "slate";
+
+export type CardTheme = "default" | "dark" | "minimal" | "accent";
+
 export type Profile = {
   id?: string;
   _id?: string;
   name: string;
-  email: string;
+  email?: string;
   role?: "student" | "admin";
   branch?: string;
   year?: number;
@@ -68,10 +128,106 @@ export type Profile = {
   avatarUrl?: string | null;
   emailVerified?: boolean;
   emailVerifiedAt?: string | null;
+  memberVerified?: boolean;
+  memberVerifiedAt?: string | null;
+  headline?: string;
+  college?: string;
+  specialization?: string;
+  bannerTheme?: BannerTheme;
+  bannerUrl?: string | null;
+  accentColor?: AccentColor;
+  cardTheme?: CardTheme;
+  socials?: SocialLinks;
+  skills?: SkillItem[];
+  projects?: ProjectItem[];
+  privacy?: ProfilePrivacy;
   createdAt?: string;
+  updatedAt?: string;
 };
 
-export type ProfileEdit = Pick<Profile, "name" | "branch" | "year" | "bio">;
+export type ProfileEdit = {
+  name: string;
+  branch?: string;
+  year?: number;
+  bio?: string;
+  headline?: string;
+  college?: string;
+  specialization?: string;
+  bannerTheme?: BannerTheme;
+  accentColor?: AccentColor;
+  cardTheme?: CardTheme;
+  socials?: SocialLinks;
+  skills?: SkillItem[];
+  privacy?: ProfilePrivacy;
+};
+
+export const BANNER_THEMES: { id: BannerTheme; label: string; desc: string }[] = [
+  { id: "google-brand", label: "Google Brand", desc: "Dynamic 4-color stripe & geometric neo-brutalist blocks" },
+  { id: "midnight-slate", label: "Midnight Slate", desc: "Dark aerospace obsidian with technical grid lines" },
+  { id: "cyber-grid", label: "Cyber Matrix", desc: "Retro-futuristic dot matrix with blueprint markers" },
+  { id: "sunset-gradient", label: "Warm Solar", desc: "Warm energetic gradient with sunset glow" },
+  { id: "emerald-code", label: "Emerald Code", desc: "Modern developer terminal mint & forest accents" },
+  { id: "custom", label: "Custom Banner", desc: "Upload your personal header artwork or banner" },
+];
+
+export const ACCENT_COLORS: { id: AccentColor; label: string; bg: string }[] = [
+  { id: "gblue", label: "Google Blue", bg: "#4285F4" },
+  { id: "gred", label: "Google Red", bg: "#EA4335" },
+  { id: "gyellow", label: "Google Yellow", bg: "#FBBC04" },
+  { id: "ggreen", label: "Google Green", bg: "#34A853" },
+  { id: "slate", label: "Dark Slate", bg: "#202124" },
+];
+
+export const CARD_THEMES: { id: CardTheme; label: string }[] = [
+  { id: "default", label: "Standard Brand" },
+  { id: "dark", label: "Obsidian Noir" },
+  { id: "minimal", label: "Clean Minimalist" },
+  { id: "accent", label: "Accent Highlight" },
+];
+
+export const CURATED_SKILLS: Record<string, string[]> = {
+  Programming: ["TypeScript", "JavaScript", "Python", "Java", "C++", "C", "Go", "Rust", "Kotlin", "Swift"],
+  Frontend: ["React", "Next.js", "Vue.js", "Svelte", "Tailwind CSS", "HTML5", "CSS3", "Redux", "Three.js"],
+  Backend: ["Node.js", "Express", "FastAPI", "Django", "Spring Boot", "GraphQL", "NestJS", "Fastify"],
+  Databases: ["MongoDB", "PostgreSQL", "MySQL", "Redis", "Supabase", "Firebase", "SQLite"],
+  "Cloud & DevOps": ["Google Cloud (GCP)", "AWS", "Docker", "Kubernetes", "CI/CD", "Git", "Linux", "Vercel"],
+  "AI & ML": ["TensorFlow", "PyTorch", "Scikit-Learn", "OpenCV", "LangChain", "Hugging Face", "NLP", "LLMs"],
+  Design: ["Figma", "UI/UX Design", "Design Systems", "Canva", "Responsive Design", "Wireframing"],
+  "Developer Tools": ["VS Code", "Postman", "Vite", "Webpack", "Vitest", "Jest", "GitHub Actions", "Docker"],
+};
+
+export function calculateProfileCompletion(user: Profile): {
+  percentage: number;
+  completedTasks: string[];
+  remainingTasks: string[];
+} {
+  const tasks = [
+    { name: "Full name provided", done: Boolean(user.name?.trim()) },
+    { name: "Professional headline", done: Boolean(user.headline?.trim()) },
+    { name: "Biography written", done: Boolean(user.bio?.trim()) },
+    { name: "Profile photo uploaded", done: Boolean(user.avatarUrl) },
+    { name: "Branch & academic year", done: Boolean(user.branch && user.year) },
+    { name: "At least 3 technical skills", done: Boolean(user.skills && user.skills.length >= 3) },
+    {
+      name: "At least 1 social link",
+      done: Boolean(
+        user.socials &&
+          (user.socials.github || user.socials.linkedin || user.socials.portfolio || user.socials.website)
+      ),
+    },
+    { name: "At least 1 featured project", done: Boolean(user.projects && user.projects.length >= 1) },
+  ];
+
+  const completed = tasks.filter((t) => t.done);
+  const remaining = tasks.filter((t) => !t.done);
+  const percentage = Math.round((completed.length / tasks.length) * 100);
+
+  return {
+    percentage,
+    completedTasks: completed.map((t) => t.name),
+    remainingTasks: remaining.map((t) => t.name),
+  };
+}
 
 export function validateProfile(p: ProfileEdit): string | null {
   const name = p.name.trim();

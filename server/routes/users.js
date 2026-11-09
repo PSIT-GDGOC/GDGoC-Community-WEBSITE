@@ -1,21 +1,54 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import User, { publicUser } from "../models/User.js";
+import Media from "../models/Media.js";
 import { requireAuth, setSession, limitAvatarUploads, recordAvatarUpload } from "../middleware/auth.js";
-import { validatePassword, validateProfile } from "../utils/domain.js";
-import { detectImageFormat, uploadAvatar, deleteAvatar } from "../utils/storage.js";
+import {
+  validatePassword,
+  validateProfile,
+  BANNER_THEMES,
+  ACCENT_COLORS,
+  CARD_THEMES,
+  validateProjectInput,
+  validateSkillsInput,
+  validateSocialsInput,
+} from "../utils/domain.js";
+import {
+  detectImageFormat,
+  uploadAvatar,
+  uploadBanner,
+  uploadProjectImage,
+  deleteAvatar,
+} from "../utils/storage.js";
 
 const router = Router();
 router.use(requireAuth);
 
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
+const MAX_BANNER_SIZE = 3 * 1024 * 1024; // 3 MB
+const MAX_PROJECTS_PER_USER = 6;
 
 router.get("/me", (req, res) => {
-  res.json(publicUser(req.user));
+  res.json(publicUser(req.user, { isSelf: true }));
 });
 
 router.patch("/me", async (req, res) => {
-  const { name, branch, year, bio } = req.body ?? {};
+  const {
+    name,
+    branch,
+    year,
+    bio,
+    headline,
+    college,
+    specialization,
+    bannerTheme,
+    accentColor,
+    cardTheme,
+    socials,
+    skills,
+    privacy,
+  } = req.body ?? {};
 
   const edit = {
     name: name !== undefined ? String(name) : req.user.name,
@@ -29,9 +62,677 @@ router.patch("/me", async (req, res) => {
     return res.status(400).json({ message: err });
   }
 
-  req.user.set({ ...edit, name: edit.name.trim(), year: edit.year ?? null });
+  const patch = {
+    name: edit.name.trim(),
+    branch: edit.branch,
+    year: edit.year ?? null,
+    bio: edit.bio,
+  };
+
+  // Professional headline (max 120 chars)
+  if (headline !== undefined) {
+    const hl = String(headline).trim();
+    if (hl.length > 120) {
+      return res.status(400).json({ message: "Headline must be 120 characters or fewer." });
+    }
+    patch.headline = hl;
+  }
+
+  // College name (max 120 chars)
+  if (college !== undefined) {
+    const c = String(college).trim();
+    if (c.length > 120) {
+      return res.status(400).json({ message: "College must be 120 characters or fewer." });
+    }
+    patch.college = c || "PSIT Kanpur";
+  }
+
+  // Specialization (max 60 chars)
+  if (specialization !== undefined) {
+    const s = String(specialization).trim();
+    if (s.length > 60) {
+      return res.status(400).json({ message: "Specialization must be 60 characters or fewer." });
+    }
+    patch.specialization = s;
+  }
+
+  // Banner theme
+  if (bannerTheme !== undefined) {
+    if (!BANNER_THEMES.includes(bannerTheme)) {
+      return res.status(400).json({ message: "Invalid banner theme selected." });
+    }
+    patch.bannerTheme = bannerTheme;
+  }
+
+  // Accent color
+  if (accentColor !== undefined) {
+    if (!ACCENT_COLORS.includes(accentColor)) {
+      return res.status(400).json({ message: "Invalid accent color selected." });
+    }
+    patch.accentColor = accentColor;
+  }
+
+  // Card theme
+  if (cardTheme !== undefined) {
+    if (!CARD_THEMES.includes(cardTheme)) {
+      return res.status(400).json({ message: "Invalid card theme selected." });
+    }
+    patch.cardTheme = cardTheme;
+  }
+
+  // Social links validation
+  if (socials !== undefined) {
+    const socialErr = validateSocialsInput(socials);
+    if (socialErr) {
+      return res.status(400).json({ message: socialErr });
+    }
+    patch.socials = {
+      github: socials.github !== undefined ? String(socials.github).trim() : (req.user.socials?.github || ""),
+      linkedin: socials.linkedin !== undefined ? String(socials.linkedin).trim() : (req.user.socials?.linkedin || ""),
+      portfolio: socials.portfolio !== undefined ? String(socials.portfolio).trim() : (req.user.socials?.portfolio || ""),
+      website: socials.website !== undefined ? String(socials.website).trim() : (req.user.socials?.website || ""),
+      twitter: socials.twitter !== undefined ? String(socials.twitter).trim() : (req.user.socials?.twitter || ""),
+    };
+  }
+
+  // Skills validation
+  if (skills !== undefined) {
+    const skillErr = validateSkillsInput(skills);
+    if (skillErr) {
+      return res.status(400).json({ message: skillErr });
+    }
+    patch.skills = skills.map((s) => ({
+      name: String(s.name).trim(),
+      category: s.category ? String(s.category).trim() : "Other",
+    }));
+  }
+
+  // Privacy preferences
+  if (privacy !== undefined && typeof privacy === "object") {
+    patch.privacy = {
+      showEmail: privacy.showEmail !== undefined ? Boolean(privacy.showEmail) : Boolean(req.user.privacy?.showEmail),
+      showAttendance:
+        privacy.showAttendance !== undefined
+          ? Boolean(privacy.showAttendance)
+          : req.user.privacy?.showAttendance !== false,
+      showProjects:
+        privacy.showProjects !== undefined
+          ? Boolean(privacy.showProjects)
+          : req.user.privacy?.showProjects !== false,
+    };
+  }
+
+  req.user.set(patch);
   await req.user.save();
-  res.json(publicUser(req.user));
+  res.json(publicUser(req.user, { isSelf: true }));
+});
+
+const MAX_PENDING_PROJECT_IMAGES = 20;
+
+export async function executeDbFirstMediaClear({ persistClear, cleanupAsset }) {
+  const cleared = await persistClear();
+  if (!cleared) {
+    return null;
+  }
+
+  if (cleared.oldPublicId) {
+    try {
+      await cleanupAsset(cleared.oldPublicId, cleared.oldProvider);
+    } catch (cleanupErr) {
+      console.error("Failed to clean up media asset after DB update:", cleanupErr);
+    }
+  }
+
+  return cleared;
+}
+
+async function resolveProjectImageAsset(user, rawImageUrl) {
+  const trimmed = rawImageUrl ? String(rawImageUrl).trim() : "";
+  if (!trimmed) {
+    return { imageUrl: null, imagePublicId: null, imageProvider: null, consumedPendingUrl: null };
+  }
+
+  // 1. Reuse already-attached asset from the user's own projects
+  const existingProj = (user.projects || []).find((p) => p.imageUrl === trimmed);
+  if (existingProj) {
+    return {
+      imageUrl: trimmed,
+      imagePublicId: existingProj.imagePublicId || null,
+      imageProvider: existingProj.imageProvider || null,
+      consumedPendingUrl: null,
+    };
+  }
+
+  // 2. Match against this user's pending uploaded project images (works for mongodb, local, cloudinary)
+  const pendingMatch = (user.pendingProjectImages || []).find((m) => m.url === trimmed);
+  if (pendingMatch) {
+    return {
+      imageUrl: trimmed,
+      imagePublicId: pendingMatch.publicId,
+      imageProvider: pendingMatch.provider,
+      consumedPendingUrl: pendingMatch.url,
+    };
+  }
+
+  // 3. Reject unowned internal media paths (/api/media, /api/v1/media, /uploads)
+  let pathname = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      pathname = new URL(trimmed).pathname;
+    } catch {
+      pathname = "";
+    }
+  }
+
+  const normalizedPath = pathname.toLowerCase();
+  const isInternalMediaPath =
+    normalizedPath.startsWith("/api/media/") ||
+    normalizedPath.startsWith("/api/v1/media/") ||
+    normalizedPath.startsWith("/uploads/");
+
+  if (isInternalMediaPath) {
+    const mediaMatch = pathname.match(/^\/(?:api(?:\/v\d+)?\/media|uploads\/projects)\/([^/.]+)(?:\.[a-z0-9]+)?$/i);
+    if (mediaMatch && mongoose.Types.ObjectId.isValid(mediaMatch[1])) {
+      const media = await Media.findById(mediaMatch[1]).select("_id owner type");
+      if (media && media.type === "project" && media.owner && media.owner.equals(user._id)) {
+        return {
+          imageUrl: trimmed,
+          imagePublicId: media._id.toString(),
+          imageProvider: "mongodb",
+          consumedPendingUrl: null,
+        };
+      }
+    }
+    const err = new Error("You do not have permission to attach that media asset.");
+    err.status = 403;
+    throw err;
+  }
+
+  // 4. External public http(s) URL
+  return {
+    imageUrl: trimmed,
+    imagePublicId: null,
+    imageProvider: null,
+    consumedPendingUrl: null,
+  };
+}
+
+function isProjectPublicIdInUse(projects, publicId, excludeProjectId = null) {
+  if (!publicId) return false;
+  return (projects || []).some(
+    (p) => (!excludeProjectId || !p._id.equals(excludeProjectId)) && p.imagePublicId === publicId
+  );
+}
+
+// ============================================================================
+// Featured Projects Endpoints
+// ============================================================================
+
+router.post("/me/projects/image", limitAvatarUploads, async (req, res) => {
+  try {
+    let fileBuffer = null;
+
+    if (Buffer.isBuffer(req.body)) {
+      fileBuffer = req.body;
+    } else if (req.body?.dataUrl) {
+      const match = String(req.body.dataUrl).match(/^data:image\/[a-zA-Z+]+;base64,(.+)$/);
+      if (match) {
+        fileBuffer = Buffer.from(match[1], "base64");
+      }
+    } else if (req.body?.base64) {
+      fileBuffer = Buffer.from(req.body.base64, "base64");
+    }
+
+    if (!fileBuffer || fileBuffer.length === 0) {
+      return res.status(400).json({ message: "No image payload provided." });
+    }
+
+    if (fileBuffer.length > MAX_AVATAR_SIZE) {
+      return res.status(413).json({ message: "Project image exceeds 2MB size limit." });
+    }
+
+    const ext = detectImageFormat(fileBuffer);
+    if (!ext || !["jpg", "png", "webp"].includes(ext)) {
+      return res.status(400).json({
+        message: "Invalid image format. Only JPEG, PNG, and WebP are allowed.",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    await recordAvatarUpload(req);
+    const result = await uploadProjectImage(fileBuffer, ext, { ownerId: req.user._id });
+
+    const existingPending = user.pendingProjectImages || [];
+    const overflowCount = Math.max(0, existingPending.length + 1 - MAX_PENDING_PROJECT_IMAGES);
+    const evicted = overflowCount > 0 ? existingPending.slice(0, overflowCount) : [];
+
+    user.pendingProjectImages = [
+      ...existingPending.slice(overflowCount),
+      {
+        url: result.url,
+        publicId: result.publicId,
+        provider: result.provider,
+        uploadedAt: new Date(),
+      },
+    ];
+
+    try {
+      await user.save();
+    } catch (saveErr) {
+      await deleteAvatar(result.publicId, result.provider);
+      throw saveErr;
+    }
+
+    for (const orphan of evicted) {
+      if (orphan?.publicId && !isProjectPublicIdInUse(user.projects, orphan.publicId)) {
+        try {
+          await deleteAvatar(orphan.publicId, orphan.provider);
+        } catch (cleanupErr) {
+          console.error("Failed to clean up evicted project upload:", cleanupErr);
+        }
+      }
+    }
+
+    res.status(201).json({ url: result.url, message: "Project image uploaded." });
+  } catch (error) {
+    console.error("Project image upload error:", error);
+    res.status(500).json({ message: "Failed to upload project image." });
+  }
+});
+
+router.post("/me/projects", async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (user.projects && user.projects.length >= MAX_PROJECTS_PER_USER) {
+      return res.status(400).json({
+        message: `Maximum ${MAX_PROJECTS_PER_USER} featured projects allowed. Delete an existing project to add a new one.`,
+      });
+    }
+
+    const err = validateProjectInput(req.body);
+    if (err) {
+      return res.status(400).json({ message: err });
+    }
+
+    const {
+      title,
+      description = "",
+      techStack = [],
+      githubUrl = "",
+      liveUrl = "",
+      imageUrl = null,
+      featured = false,
+    } = req.body;
+
+    const resolvedImage = await resolveProjectImageAsset(user, imageUrl);
+
+    const newProject = {
+      title: String(title).trim(),
+      description: String(description).trim(),
+      techStack: Array.isArray(techStack) ? techStack.map((t) => String(t).trim()).filter(Boolean) : [],
+      githubUrl: String(githubUrl).trim(),
+      liveUrl: String(liveUrl).trim(),
+      imageUrl: resolvedImage.imageUrl,
+      imagePublicId: resolvedImage.imagePublicId,
+      imageProvider: resolvedImage.imageProvider,
+      featured: Boolean(featured),
+      order: user.projects.length,
+    };
+
+    user.projects.push(newProject);
+    if (resolvedImage.consumedPendingUrl) {
+      user.pendingProjectImages = (user.pendingProjectImages || []).filter(
+        (m) => m.url !== resolvedImage.consumedPendingUrl
+      );
+    }
+    await user.save();
+
+    const created = user.projects[user.projects.length - 1];
+    res.status(201).json({
+      message: "Project added successfully.",
+      project: {
+        id: created._id.toString(),
+        title: created.title,
+        description: created.description,
+        techStack: created.techStack,
+        githubUrl: created.githubUrl,
+        liveUrl: created.liveUrl,
+        imageUrl: created.imageUrl,
+        featured: created.featured,
+        order: created.order,
+        createdAt: created.createdAt,
+      },
+      user: publicUser(user, { isSelf: true }),
+    });
+  } catch (error) {
+    if (error?.status === 403) {
+      return res.status(403).json({ message: error.message });
+    }
+    console.error("Add project error:", error);
+    res.status(500).json({ message: "Failed to add project." });
+  }
+});
+
+router.patch("/me/projects/:projectId", async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.projectId)) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const project = user.projects.id(req.params.projectId);
+    if (!project) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    const { title, description, techStack, githubUrl, liveUrl, imageUrl, featured } = req.body ?? {};
+
+    const candidate = {
+      title: title !== undefined ? title : project.title,
+      description: description !== undefined ? description : project.description,
+      techStack: techStack !== undefined ? techStack : project.techStack,
+      githubUrl: githubUrl !== undefined ? githubUrl : project.githubUrl,
+      liveUrl: liveUrl !== undefined ? liveUrl : project.liveUrl,
+      imageUrl: imageUrl !== undefined ? imageUrl : project.imageUrl,
+    };
+
+    const err = validateProjectInput(candidate);
+    if (err) {
+      return res.status(400).json({ message: err });
+    }
+
+    const oldPublicId = project.imagePublicId;
+    const oldProvider = project.imageProvider;
+    let resolvedImage = null;
+
+    if (imageUrl !== undefined) {
+      resolvedImage = await resolveProjectImageAsset(user, imageUrl);
+    }
+
+    if (title !== undefined) project.title = String(title).trim();
+    if (description !== undefined) project.description = String(description).trim();
+    if (techStack !== undefined && Array.isArray(techStack)) {
+      project.techStack = techStack.map((t) => String(t).trim()).filter(Boolean);
+    }
+    if (githubUrl !== undefined) project.githubUrl = String(githubUrl).trim();
+    if (liveUrl !== undefined) project.liveUrl = String(liveUrl).trim();
+    if (resolvedImage) {
+      project.imageUrl = resolvedImage.imageUrl;
+      project.imagePublicId = resolvedImage.imagePublicId;
+      project.imageProvider = resolvedImage.imageProvider;
+      if (resolvedImage.consumedPendingUrl) {
+        user.pendingProjectImages = (user.pendingProjectImages || []).filter(
+          (m) => m.url !== resolvedImage.consumedPendingUrl
+        );
+      }
+    }
+    if (featured !== undefined) project.featured = Boolean(featured);
+
+    await user.save();
+
+    if (
+      resolvedImage &&
+      oldPublicId &&
+      oldPublicId !== project.imagePublicId &&
+      !isProjectPublicIdInUse(user.projects, oldPublicId, project._id)
+    ) {
+      try {
+        await deleteAvatar(oldPublicId, oldProvider);
+      } catch (cleanupErr) {
+        console.error("Failed to clean up replaced project image:", cleanupErr);
+      }
+    }
+
+    res.json({
+      message: "Project updated successfully.",
+      project: {
+        id: project._id.toString(),
+        title: project.title,
+        description: project.description,
+        techStack: project.techStack,
+        githubUrl: project.githubUrl,
+        liveUrl: project.liveUrl,
+        imageUrl: project.imageUrl,
+        featured: project.featured,
+        order: project.order,
+        createdAt: project.createdAt,
+      },
+      user: publicUser(user, { isSelf: true }),
+    });
+  } catch (error) {
+    if (error?.status === 403) {
+      return res.status(403).json({ message: error.message });
+    }
+    console.error("Update project error:", error);
+    res.status(500).json({ message: "Failed to update project." });
+  }
+});
+
+router.delete("/me/projects/:projectId", async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.projectId)) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    let user = null;
+    const cleared = await executeDbFirstMediaClear({
+      persistClear: async () => {
+        user = await User.findById(req.user._id);
+        if (!user) return null;
+
+        const project = user.projects.id(req.params.projectId);
+        if (!project) return { notFound: true };
+
+        const oldPublicId = project.imagePublicId;
+        const oldProvider = project.imageProvider;
+
+        user.projects.pull({ _id: req.params.projectId });
+        await user.save();
+
+        const shouldDelete = oldPublicId && !isProjectPublicIdInUse(user.projects, oldPublicId);
+        return {
+          oldPublicId: shouldDelete ? oldPublicId : null,
+          oldProvider: shouldDelete ? oldProvider : null,
+        };
+      },
+      cleanupAsset: deleteAvatar,
+    });
+
+    if (!cleared) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (cleared.notFound) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    res.json({
+      message: "Project removed successfully.",
+      user: publicUser(user, { isSelf: true }),
+    });
+  } catch (error) {
+    console.error("Delete project error:", error);
+    res.status(500).json({ message: "Failed to delete project." });
+  }
+});
+
+router.put("/me/projects/reorder", async (req, res) => {
+  try {
+    const { order } = req.body ?? {};
+    if (!Array.isArray(order)) {
+      return res.status(400).json({ message: "Order must be an array of project IDs." });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const existingIds = user.projects.map((project) => project._id.toString());
+    const requestedIds = order.map(String);
+    const uniqueIds = new Set(requestedIds);
+    if (
+      requestedIds.length !== existingIds.length ||
+      uniqueIds.size !== requestedIds.length ||
+      existingIds.some((id) => !uniqueIds.has(id))
+    ) {
+      return res.status(400).json({ message: "Order must contain each of your project IDs exactly once." });
+    }
+
+    const idMap = new Map(requestedIds.map((id, index) => [id, index]));
+
+    user.projects.forEach((proj) => {
+      const projId = proj._id.toString();
+      if (idMap.has(projId)) {
+        proj.order = idMap.get(projId);
+      }
+    });
+
+    user.projects.sort((a, b) => a.order - b.order);
+    await user.save();
+
+    res.json({
+      message: "Projects reordered successfully.",
+      user: publicUser(user, { isSelf: true }),
+    });
+  } catch (error) {
+    console.error("Reorder projects error:", error);
+    res.status(500).json({ message: "Failed to reorder projects." });
+  }
+});
+
+// ============================================================================
+// Cover Banner Upload & Management
+// ============================================================================
+
+router.post("/me/banner", limitAvatarUploads, async (req, res) => {
+  try {
+    let fileBuffer = null;
+
+    if (Buffer.isBuffer(req.body)) {
+      fileBuffer = req.body;
+    } else if (req.body?.dataUrl) {
+      const match = String(req.body.dataUrl).match(/^data:image\/[a-zA-Z+]+;base64,(.+)$/);
+      if (match) {
+        fileBuffer = Buffer.from(match[1], "base64");
+      }
+    } else if (req.body?.base64) {
+      fileBuffer = Buffer.from(req.body.base64, "base64");
+    }
+
+    if (!fileBuffer || fileBuffer.length === 0) {
+      return res.status(400).json({ message: "No banner image payload provided." });
+    }
+
+    if (fileBuffer.length > MAX_BANNER_SIZE) {
+      return res.status(413).json({ message: "Banner image exceeds 3MB size limit." });
+    }
+
+    const ext = detectImageFormat(fileBuffer);
+    if (!ext || !["jpg", "png", "webp"].includes(ext)) {
+      return res.status(400).json({
+        message: "Invalid image format. Only JPEG, PNG, and WebP are allowed.",
+      });
+    }
+
+    await recordAvatarUpload(req);
+
+    const exists = await User.exists({ _id: req.user._id });
+    if (!exists) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const result = await uploadBanner(fileBuffer, ext, { ownerId: req.user._id });
+
+    let previous = null;
+    try {
+      previous = await User.findOneAndUpdate(
+        { _id: req.user._id },
+        {
+          $set: {
+            bannerUrl: result.url,
+            bannerPublicId: result.publicId,
+            bannerProvider: result.provider,
+            bannerTheme: "custom",
+          },
+        },
+        { returnDocument: "before" }
+      );
+    } catch (saveErr) {
+      await deleteAvatar(result.publicId, result.provider);
+      throw saveErr;
+    }
+
+    if (!previous) {
+      await deleteAvatar(result.publicId, result.provider);
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (previous.bannerPublicId && previous.bannerPublicId !== result.publicId) {
+      try {
+        await deleteAvatar(previous.bannerPublicId, previous.bannerProvider);
+      } catch (cleanupErr) {
+        console.error("Failed to clean up old banner:", cleanupErr);
+      }
+    }
+
+    const updatedUser = await User.findById(req.user._id);
+    res.status(200).json({
+      message: "Cover banner updated successfully.",
+      user: publicUser(updatedUser, { isSelf: true }),
+    });
+  } catch (error) {
+    console.error("Banner upload error:", error);
+    res.status(500).json({ message: "Failed to upload cover banner." });
+  }
+});
+
+router.delete("/me/banner", async (req, res) => {
+  try {
+    const cleared = await executeDbFirstMediaClear({
+      persistClear: async () => {
+        const prev = await User.findOneAndUpdate(
+          { _id: req.user._id },
+          {
+            $set: {
+              bannerUrl: null,
+              bannerPublicId: null,
+              bannerProvider: null,
+              bannerTheme: "google-brand",
+            },
+          },
+          { returnDocument: "before" }
+        );
+        if (!prev) return null;
+        return { oldPublicId: prev.bannerPublicId, oldProvider: prev.bannerProvider };
+      },
+      cleanupAsset: deleteAvatar,
+    });
+
+    if (!cleared) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const updatedUser = await User.findById(req.user._id);
+    res.status(200).json({
+      message: "Cover banner removed successfully.",
+      user: publicUser(updatedUser, { isSelf: true }),
+    });
+  } catch (error) {
+    console.error("Banner delete error:", error);
+    res.status(500).json({ message: "Failed to remove cover banner." });
+  }
 });
 
 router.patch("/me/password", async (req, res) => {
@@ -96,74 +797,96 @@ router.post("/me/avatar", limitAvatarUploads, async (req, res) => {
 
     await recordAvatarUpload(req);
 
-    const user = await User.findById(req.user._id);
-    if (!user) {
+    const exists = await User.exists({ _id: req.user._id });
+    if (!exists) {
       return res.status(404).json({ message: "User not found." });
     }
 
-    const oldPublicId = user.avatarPublicId;
-    const oldProvider = user.avatarProvider;
-
     // Upload new avatar first before deleting the old one
-    const result = await uploadAvatar(fileBuffer, ext);
+    const result = await uploadAvatar(fileBuffer, ext, { ownerId: req.user._id });
 
-    user.avatarUrl = result.url;
-    user.avatarPublicId = result.publicId;
-    user.avatarProvider = result.provider;
-
+    let previous = null;
     try {
-      await user.save();
+      previous = await User.findOneAndUpdate(
+        { _id: req.user._id },
+        {
+          $set: {
+            avatarUrl: result.url,
+            avatarPublicId: result.publicId,
+            avatarProvider: result.provider,
+          },
+        },
+        { returnDocument: "before" }
+      );
     } catch (saveErr) {
       // If saving fails, clean up the newly uploaded orphaned avatar
       await deleteAvatar(result.publicId, result.provider);
       throw saveErr;
     }
 
+    if (!previous) {
+      await deleteAvatar(result.publicId, result.provider);
+      return res.status(404).json({ message: "User not found." });
+    }
+
     // Clean up previous avatar only after the new one is safely uploaded and saved
-    if (oldPublicId) {
+    if (previous.avatarPublicId && previous.avatarPublicId !== result.publicId) {
       try {
-        await deleteAvatar(oldPublicId, oldProvider);
+        await deleteAvatar(previous.avatarPublicId, previous.avatarProvider);
       } catch (cleanupErr) {
         console.error("Failed to clean up old avatar:", cleanupErr);
       }
     }
 
+    const updatedUser = await User.findById(req.user._id);
     res.status(200).json({
       message: "Profile photo updated successfully.",
-      user: publicUser(user),
+      user: publicUser(updatedUser, { isSelf: true }),
     });
   } catch (error) {
     console.error("Avatar upload error:", error);
-    const detail = error?.message;
     res.status(500).json({
-      message: detail && !detail.includes("\n") ? detail : "Failed to upload profile photo.",
+      message: "Failed to upload profile photo.",
     });
   }
 });
 
 router.delete("/me/avatar", async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    const cleared = await executeDbFirstMediaClear({
+      persistClear: async () => {
+        const prev = await User.findOneAndUpdate(
+          {
+            _id: req.user._id,
+            $or: [{ avatarUrl: { $ne: null } }, { avatarPublicId: { $ne: null } }],
+          },
+          {
+            $set: {
+              avatarUrl: null,
+              avatarPublicId: null,
+              avatarProvider: null,
+            },
+          },
+          { returnDocument: "before" }
+        );
+        if (!prev) return null;
+        return { oldPublicId: prev.avatarPublicId, oldProvider: prev.avatarProvider };
+      },
+      cleanupAsset: deleteAvatar,
+    });
 
-    if (!user.avatarUrl && !user.avatarPublicId) {
+    if (!cleared) {
+      const exists = await User.exists({ _id: req.user._id });
+      if (!exists) {
+        return res.status(404).json({ message: "User not found." });
+      }
       return res.status(400).json({ message: "No profile photo to remove." });
     }
 
-    if (user.avatarPublicId) {
-      await deleteAvatar(user.avatarPublicId, user.avatarProvider);
-    }
-
-    user.avatarUrl = null;
-    user.avatarPublicId = null;
-    user.avatarProvider = null;
-    await user.save();
-
+    const updatedUser = await User.findById(req.user._id);
     res.status(200).json({
       message: "Profile photo removed successfully.",
-      user: publicUser(user),
+      user: publicUser(updatedUser, { isSelf: true }),
     });
   } catch (error) {
     console.error("Avatar delete error:", error);

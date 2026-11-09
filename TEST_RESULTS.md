@@ -1,111 +1,51 @@
 # GDGoC Community Website — Test Execution & Quality Assurance Results
 
-**Target Branch**: `remediation/fullstack-profile-hardening`  
-**Test Run Date**: November 7, 2026  
-**Environment**: Windows 11, Node.js v22+, Vitest v5, MongoDB v7.0  
-**Quality Assurance Lead**: Senior QA & Full-Stack Automation Engineer  
+**Target Branch**: `feat/dynamic-identity-hub` (PR #25 targeting `main`)  
+**Test Run Date**: November 9, 2026 (Post-cleanup verification after removing `gdgoc_hardening/`)  
+**Environment**: Windows 11, Node.js v22+, Vitest v5.0.5, Vite v7.3.2, TypeScript v5.9.3, MongoDB  
 
 ---
 
 ## 1. Executive Summary
 
-All automated regression and integration test suites passed with **100% success rate (0 failures, 0 skipped, 0 regressions)**.
+All automated test suites, static type checks, production builds, dependency security audits, and live headless browser QA checks passed with **0 failures and 0 vulnerabilities**.
 
-| Verification Level | Test Runner | Total Tests / Checks | Passed | Failed | Status |
-|---|---|---|---|---|---|
-| **Backend Integration & Unit** | Node.js Test Runner (`node --test`) | **98 tests** (14 suites) | 98 | 0 | **100% PASS** |
-| **Frontend Unit & Component** | Vitest (`vitest run --environment jsdom`) | **78 tests** (8 suites) | 78 | 0 | **100% PASS** |
-| **Logic & Motion Boundary Scripts** | TSX (`tsx tests/*.test.ts`) | **90 checks** (4 suites) | 90 | 0 | **100% PASS** |
-| **Production Build Compilation** | Vite v7 (`vite build`) | Single-file Bundle | 1064 modules | 0 errors | **SUCCESS** |
-| **Static Type Analysis** | TypeScript (`tsc --noEmit -p .`) | Complete codebase | 0 errors | 0 errors | **SUCCESS** |
+| Verification Layer | Runner / Command | Scope | Result |
+|---|---|---|---|
+| **Static Type Check** | `tsc --noEmit -p .` (`npm run check`) | Full TypeScript codebase | **0 errors** |
+| **Frontend Component & Integration** | `vitest run --environment jsdom` (`npm test`) | 9 files, 90 tests (`15.08s`) | **90 / 90 PASS** |
+| **Logic & Motion Boundary Scripts** | `tsx tests/*.test.ts` (`npm run test:scripts`) | 4 script suites (`profile`, `oso`, `ruru`, `statuscard`) | **All PASS (`profile` + 90 checks)** |
+| **Production Single-File Build** | `vite build` (`npm run build`) | 1071 modules → `dist/index.html` (`1,885.67 kB`, gzip `527.64 kB`) | **SUCCESS (`23.31s`)** |
+| **Backend API & Integration** | `node --test` (`cd server && npm test`) | 9 files, 14 suites, 111 Node test runner entries (`75.26s`) | **111 / 111 PASS** |
+| **Dependency Security Audit** | `npm audit --omit=dev` (root & `server/`) | Production runtime dependencies | **0 vulnerabilities** |
+| **Live Browser & Responsive QA** | Headless Chrome via Playwright | Auth/Profile flows, `/tickets` 500 + retry, `320px–1920px` viewports | **PASS (`0px` overflow, 0 errors)** |
 
 ---
 
-## 2. Backend Test Suites (`npm test` in `server/`)
+## 2. Backend Test Suites (`cd server && npm test`)
+
+Executed against the live Express API server and MongoDB after removing `gdgoc_hardening/`:
 
 ```bash
 node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit \
   api.test.js utils/tickets.test.js edge.test.js admin.test.js \
-  remediation.test.js email-allowlist.test.js avatar.test.js password-reset.test.js
+  remediation.test.js email-allowlist.test.js avatar.test.js \
+  password-reset.test.js identity-hub.test.js
 ```
 
-### 2.1 Password Recovery & Account Verification Suite (`server/password-reset.test.js`)
-- **Status**: PASSED (8 / 8 tests, 100%)
-- **Duration**: ~4.8 seconds
-- **Test Details**:
-  1. `✔ 1. Forgot password request for unknown account returns generic 200 without leaking existence (14.0ms)`
-  2. `✔ 2. Forgot password request for valid account returns generic 200 and generates reset token (27.5ms)`
-  3. `✔ 3. Verify reset token endpoint validates genuine token and rejects invalid tokens (12.1ms)`
-  4. `✔ 4. Reset password rejects mismatched passwords and passwords violating complexity rules (10.3ms)`
-  5. `✔ 5. Reset password succeeds, invalidates previous sessions, and verifies email ownership (2557.3ms)`
-  6. `✔ 6. Rejects reset request when token has expired (493.2ms)`
-  7. `✔ 7. Rate limiting restricts excessive forgot-password requests (99.7ms)`
-  8. `✔ 8. Concurrent reset requests with the same token result in exactly one success and reject the duplicate (1146.7ms)`
+| Test File | Suite / Coverage Summary | Verified Leaf Cases | Status |
+|---|---|---|---|
+| `server/remediation.test.js` | Attendance, self-demotion, admin hardening, email domains, poster magic bytes & Cloudinary signing, ticket concurrency, CSV escaping, pagination, prod isolation | 30 | **PASS** |
+| `server/avatar.test.js` | PNG/JPEG/WebP upload, 2 MB limit, magic-byte check, auth & account isolation, replacement cleanup, delete idempotency, URL injection defense, rate limiting | 15 | **PASS** |
+| `server/email-allowlist.test.js` | Direct Gmail/public/campus registration, login without OTP, duplicate rejection, session cookies, role guards | 14 | **PASS** |
+| `server/edge.test.js` | NoSQL injection, JWT algorithm/expiry checks, `tokenVersion` invalidation, overselling races, malformed ObjectIds, 404 JSON APIs, 20 KB DoS limit, CORS, Unicode | 13 | **PASS** |
+| `server/api.test.js` | Core auth, tickets/QR ownership, duplicate registration `409`, profile updates, password rotation, event registration/cancellation, CSRF site checks, login rate limit | 11 | **PASS** |
+| `server/identity-hub.test.js` | Domain rules, `publicUser` default masking vs `{ isSelf: true }`, path traversal/asset hijack blocking, `executeDbFirstMediaClear` failure injection, CRUD & strict `400` reorder validation, `403` cross-user project image defense, shared-asset reference preservation, concurrent avatar races & double delete | 12 *(counted as 13 by `node --test` due to 1 parent `test()` wrapper around 9 `t.test()` subtests)* | **PASS** |
+| `server/password-reset.test.js` | Unknown email anti-enumeration `200`, token generation/verification, complexity rules, reset + `tokenVersion` session invalidation, expiry, rate limit, concurrent token replay | 8 | **PASS** |
+| `server/utils/tickets.test.js` | Admission state machine & event expiry windows | 4 | **PASS** |
+| `server/admin.test.js` | Role guards, event CRUD lifecycle, user promotion | 3 | **PASS** |
 
-### 2.2 Personal Profile Picture & Avatar Management Suite (`server/avatar.test.js`)
-- **Status**: PASSED (15 / 15 tests, 100%)
-- **Duration**: ~1.7 seconds
-- **Test Details**:
-  1. `✔ 1. Successfully uploads a valid PNG profile picture (45.1ms)`
-  2. `✔ 2. Successfully uploads a valid JPEG avatar using binary payload (34.7ms)`
-  3. `✔ 3. Successfully uploads a valid WebP avatar using dataUrl payload (22.0ms)`
-  4. `✔ 4. Rejects oversized avatar files (>2 MB) with 413 Payload Too Large (29.8ms)`
-  5. `✔ 5. Rejects non-image and disguised files with 400 Bad Request (12.0ms)`
-  6. `✔ 6. Rejects unauthenticated avatar requests with 401 (22.9ms)`
-  7. `✔ 7. Enforces strict account isolation between users (54.2ms)`
-  8. `✔ 8. Replacing an avatar cleans up the previous storage file (39.6ms)`
-  9. `✔ 9. Successfully deletes profile avatar and handles double deletion cleanly (45.4ms)`
-  10. `✔ 10. PATCH /api/users/me blocks arbitrary avatar URL injection (12.2ms)`
-  11. `✔ 11. Verifies server-side metadata stripping logic (0.9ms)`
-  12. `✔ 12. /api/v1/users/me/avatar alias routes work seamlessly (37.6ms)`
-  13. `✔ 13. Failed upload does not destroy the user's existing avatar (45.8ms)`
-  14. `✔ 14. Failed storage upload and save cleans up newly uploaded assets without orphaned files (46.7ms)`
-  15. `✔ 15. Rate limiting restricts excessive avatar uploads with 429 (590.8ms)`
-
-### 2.3 Core API & Authentication Suite (`server/api.test.js`)
-- **Status**: PASSED (14 / 14 tests, 100%)
-- **Duration**: ~14.8 seconds
-- **Test Details**:
-  - `✔ auth and profile (2123.1ms)`
-  - `✔ tickets: members only see their own tickets and QR codes for valid ones (1326.6ms)`
-  - `✔ concurrent duplicate registrations return one 201 and clean 409s (2509.3ms)`
-  - `✔ profile updates save allowed fields and reject invalid values (631.4ms)`
-  - `✔ password change checks the current password and signs out other sessions (4998.4ms)`
-  - `✔ events: listing, details and registration rules (2229.6ms)`
-  - `✔ events: meeting links stay private and members can cancel and register again (2210.7ms)`
-  - `✔ dashboard data is only served to the signed-in member (827.7ms)`
-  - `✔ state-changing requests from other sites are blocked (47.2ms)`
-  - `✔ form validation errors do not count toward the login limit (787.8ms)`
-  - `✔ rate limit blocks repeated failed logins (2574.8ms)`
-
-### 2.4 Security, Attendance & Concurrency Remediation Suite (`server/remediation.test.js`)
-- **Status**: PASSED (26 / 26 tests, 100%)
-- **Duration**: ~8.7 seconds
-- **Test Details**:
-  - Phase 3: Attendance Calculation & Eligibility Population (2 tests)
-  - Phase 4: Self-Demotion & Role Management Security (3 tests)
-  - Phase 2: Admin Password Hardening & Session Invalidation (3 tests)
-  - Phase 5: Public & Campus Email Registration Support (4 tests)
-  - Phase 6: Simplified Authentication & Direct Session Flow (5 tests)
-  - Phase 7: Event Poster Upload & Magic Byte Validation (7 tests)
-  - Phase 8: Ticket Scanner & Admission Concurrency (2 tests)
-  - Phase 9: CSV Formula Injection Defense (1 test)
-  - Phase 10: Admin User List Pagination (1 test)
-  - Phase 11: Production Environment Domain Isolation (2 tests)
-
-### 2.5 Admin Operations Suite (`server/admin.test.js`)
-- **Status**: PASSED (3 / 3 tests, 100%)
-- **Test Details**:
-  - `✔ Admin Suite: Role-based authorization guards (1401.2ms)`
-  - `✔ Admin Suite: Event lifecycle (create, update, get registrations, delete) (285.3ms)`
-  - `✔ Admin Suite: User management & role promotion (51.2ms)`
-
-### 2.6 Edge Conditions & Admission Suites (`edge.test.js`, `utils/tickets.test.js`, `email-allowlist.test.js`)
-- **Status**: PASSED (32 / 32 tests, 100%)
-- **Test Details**:
-  - NoSQL injection defense, JWT algorithm tampering rejection, malformed ObjectId handling, capacity overselling locks, and email casing normalization.
-
-**Backend Total**: **98 passed, 0 failed (100% pass rate)**.
+- **Node Test Runner Reported Totals**: `111 tests`, `14 suites`, **`111 passed, 0 failed, 0 cancelled, 0 skipped`**.
 
 ---
 
@@ -115,49 +55,56 @@ node --env-file-if-exists=.env --test --test-concurrency=1 --test-force-exit \
 vitest run --environment jsdom \
   tests/auth.test.tsx tests/homepage.test.tsx tests/tickets.test.tsx \
   tests/events.test.tsx tests/dashboard.test.tsx tests/review.test.tsx \
-  tests/admin.test.tsx tests/avatar.test.tsx
+  tests/admin.test.tsx tests/avatar.test.tsx tests/identity-hub.test.tsx
 ```
 
-| Test File | Tests | Duration | Result |
+| Test File | Passed Tests | Duration | Status |
 |---|---|---|---|
-| `tests/auth.test.tsx` | 15 passed | 2.42s | **PASS** |
-| `tests/avatar.test.tsx` | 6 passed | 1.49s | **PASS** |
-| `tests/dashboard.test.tsx` | 17 passed | 2.39s | **PASS** |
-| `tests/events.test.tsx` | 18 passed | 2.13s | **PASS** |
-| `tests/tickets.test.tsx` | 11 passed | 1.19s | **PASS** |
-| `tests/homepage.test.tsx` | 5 passed | 1.72s | **PASS** |
-| `tests/review.test.tsx` | 4 passed | 0.72s | **PASS** |
-| `tests/admin.test.tsx` | 2 passed | 0.84s | **PASS** |
+| `tests/events.test.tsx` | 18 | 1.92s | **PASS** |
+| `tests/dashboard.test.tsx` | 17 | 2.34s | **PASS** |
+| `tests/auth.test.tsx` | 15 | 2.19s | **PASS** |
+| `tests/identity-hub.test.tsx` | 12 | 2.58s | **PASS** |
+| `tests/tickets.test.tsx` | 11 | 1.25s | **PASS** |
+| `tests/avatar.test.tsx` | 6 | 1.43s | **PASS** |
+| `tests/homepage.test.tsx` | 5 | 1.55s | **PASS** |
+| `tests/review.test.tsx` | 4 | 0.60s | **PASS** |
+| `tests/admin.test.tsx` | 2 | 0.91s | **PASS** |
 
-**Frontend Total**: **78 passed, 0 failed (100% pass rate)**.
-
----
-
-## 4. Test Scripts & Logic Boundaries (`npm run test:scripts`)
-
-```bash
-tsx tests/profile.test.ts && tsx tests/oso.test.ts && tsx tests/ruru.test.ts && tsx tests/statuscard.test.ts
-```
-
-1. **`tests/profile.test.ts`**: All checks passed (profile validation, branch/year boundaries, bio length caps, password rules).
-2. **`tests/oso.test.ts`**: 11 checks passed (Open Source October boundary transitions and date calculations).
-3. **`tests/ruru.test.ts`**: 53 checks passed (interactive mascot physics, quaternion normalization, camera projection, velocity caps).
-4. **`tests/statuscard.test.ts`**: 26 checks passed (sentinel intersection gates, dismissal persistence, observer thresholds).
-
-**Scripts Total**: **90 passed, 0 failed (100% pass rate)**.
+- **Frontend Totals**: **`9 / 9` files passed**, **`90 / 90` tests passed** in `15.08s`.
+- **`tests/identity-hub.test.tsx` Coverage Highlights**:
+  - `ProfileHero` private email hiding, Portfolio vs Personal Website separation, `javascript:` URL blocking, completion checklist toggle, and custom banner image error fallback.
+  - Strict separation of `emailVerified` (`Community Member (Email Verified)`) vs admin `memberVerified` (`Verified Chapter Member`) on `MemberCard`.
+  - Categorized skills without percentage bars, project grid & link safety, and real ticket participation metrics.
+  - `ProfilePreferences` View/Configure modes + `#/forgot-password` link with zero inline password-change inputs.
+  - Lazy-loaded `ProfileEditorModal` WAI-ARIA tabs (`tablist`/`tab`/`tabpanel`) and `Escape`/`Done` unsaved-edit `"Discard unsaved changes?"` `alertdialog` flows (`Keep Editing` & `Discard & Close`).
+  - Simulated `/api/tickets` `500` outage rendering `"Community activity is temporarily unavailable."` + `"–"` card stats, recovering on **Retry** without refetching `/users/me` or unmounting profile sections.
 
 ---
 
-## 5. Production Compilation Build Verification (`npm run build`)
+## 4. Script Boundary Tests & Build (`npm run check`)
 
-```
-vite v7.3.2 building client environment for production...
-✓ 1064 modules transformed.
-[plugin vite:singlefile] Inlining: index-B-HTnVET.js
-[plugin vite:singlefile] Inlining: style-C9xmAMJd.css
-dist/index.html  1,805.48 kB │ gzip: 509.79 kB
-✓ built in 24.23s
-```
-- **Exit Code**: 0
-- **Bundle**: Self-contained production `dist/index.html` single-file artifact with zero external asset dependencies.
+1. **`tsc --noEmit -p .`**: Exited `0` with `0` diagnostics.
+2. **`npm run test:scripts`**:
+   - `tests/profile.test.ts`: `profile: all checks passed`
+   - `tests/oso.test.ts`: `All 11 OSO boundary checks passed (totalDays=24).`
+   - `tests/ruru.test.ts`: `All 53 Ruru checks passed.`
+   - `tests/statuscard.test.ts`: `All 26 status-card checks passed.`
+3. **`npm run build` (`vite build`)**:
+   - `1071` modules transformed cleanly.
+   - `vite-plugin-singlefile` generated `dist/index.html` (`1,885.67 kB` | gzip `527.64 kB`) in `23.31s`.
 
+---
+
+## 5. Dependency Audits & Live Playwright QA
+
+### 5.1 Production Dependency Audits
+- Root workspace (`npm audit --omit=dev`): **`found 0 vulnerabilities`**.
+- Server workspace (`cd server && npm audit --omit=dev` after `npm audit fix` updated `body-parser` `2.3.0 -> 2.4.0`): **`found 0 vulnerabilities`**.
+
+### 5.2 Live Browser Verification (Headless Chrome via Playwright against local Vite + Express + MongoDB)
+- **Auth & Forgot Password**: `#/login` exposes functional `"Forgot password?"` recovery flow; authenticated `#/profile` contains `0` `<input type="password">` elements.
+- **Identity Hub Flows**: Default hidden email verified; `MemberCard` flip (`Front ↔ Pass`) verified; lazy-loaded `ProfileEditorModal` opened cleanly, edited headline, triggered `Escape`/`Done` unsaved-changes confirmation (`Keep Editing` retained input; `Discard & Close` dismissed cleanly), and persisted clean saves.
+- **Resilience & Reduced Motion**: Simulated `/api/tickets` `500` rendered honest unavailable banner + `"–"` card metrics and recovered cleanly via Retry without refetching `/users/me`; `prefers-reduced-motion: reduce` respected cleanly.
+- **Responsive Overflow Audit (`scrollWidth <= innerWidth`)**: `320px`, `360px`, `390px`, `768px`, `1024px`, `1366px`, and `1920px` viewports — **all 7 measured `0px` horizontal overflow**, including all 5 editor modal tabs at `320px` and `390px`.
+- **Error Telemetry**: `0` console errors on authenticated `#/profile`, `0` uncaught `pageerror` exceptions, `0` unexpected `500` server errors (`/`/`#/login` mount probe to `/api/users/me` returns expected unauthenticated `401`).
+- **Captured Artifacts**: Refreshed and visually inspected [`desktop-profile-hub.png`](docs/screenshots/identity-hub/desktop-profile-hub.png), [`desktop-member-card-pass.png`](docs/screenshots/identity-hub/desktop-member-card-pass.png), [`desktop-profile-editor.png`](docs/screenshots/identity-hub/desktop-profile-editor.png), and [`mobile-profile-hub.png`](docs/screenshots/identity-hub/mobile-profile-hub.png).

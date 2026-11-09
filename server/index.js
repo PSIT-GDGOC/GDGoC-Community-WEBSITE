@@ -60,7 +60,7 @@ app.get(["/api/media/:id", "/api/v1/media/:id"], async (req, res) => {
 });
 
 // Fallback for older /uploads/ paths to check MongoDB Media
-app.get(["/uploads/avatars/:id", "/uploads/:id"], async (req, res, next) => {
+app.get(["/uploads/avatars/:id", "/uploads/banners/:id", "/uploads/projects/:id", "/uploads/:id"], async (req, res, next) => {
   try {
     const rawId = req.params.id.split(".")[0];
     if (mongoose.Types.ObjectId.isValid(rawId)) {
@@ -89,13 +89,27 @@ app.use(
   express.json({ limit: "6mb" })
 );
 
-// Dedicated parsers for avatar upload endpoints (up to 3mb)
+// Dedicated parsers for avatar, banner & project image upload endpoints (up to 3mb)
 app.use(
-  ["/api/users/me/avatar", "/api/v1/users/me/avatar"],
+  [
+    "/api/users/me/avatar",
+    "/api/v1/users/me/avatar",
+    "/api/users/me/banner",
+    "/api/v1/users/me/banner",
+    "/api/users/me/projects/image",
+    "/api/v1/users/me/projects/image",
+  ],
   express.raw({ type: ["image/*", "application/octet-stream"], limit: "3mb" })
 );
 app.use(
-  ["/api/users/me/avatar", "/api/v1/users/me/avatar"],
+  [
+    "/api/users/me/avatar",
+    "/api/v1/users/me/avatar",
+    "/api/users/me/banner",
+    "/api/v1/users/me/banner",
+    "/api/users/me/projects/image",
+    "/api/v1/users/me/projects/image",
+  ],
   express.json({ limit: "3mb" })
 );
 
