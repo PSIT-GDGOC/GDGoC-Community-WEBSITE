@@ -241,7 +241,7 @@ export default function ProfileHero({
                   <span
                     className={`h-2 w-2 rounded-full ${
                       user.memberVerified
-                        ? "bg-white animate-pulse"
+                        ? "bg-white animate-pulse motion-reduce:animate-none"
                         : user.emailVerified
                         ? "bg-gblue"
                         : "bg-gyellow"
@@ -432,6 +432,7 @@ export default function ProfileHero({
             </div>
             <button
               type="button"
+              aria-expanded={showTasksModal}
               onClick={() => setShowTasksModal(!showTasksModal)}
               className="text-xs font-bold text-ink hover:underline"
             >

@@ -259,9 +259,11 @@ export function validateProjectInput(p) {
   }
   if (p.imageUrl) {
     const imgStr = String(p.imageUrl).trim();
-    const safeRelative = /^\/(api\/media|uploads)\/[a-zA-Z0-9._/-]+$/.test(imgStr);
+    const safeRelative =
+      !imgStr.includes("..") &&
+      /^\/(?:api(?:\/v\d+)?\/media\/[a-zA-Z0-9._-]+|uploads\/projects\/[a-zA-Z0-9._-]+)$/.test(imgStr);
     if (!safeRelative && !isValidUrl(imgStr)) {
-      return "Project image URL must be a valid http(s) URL or uploaded media path.";
+      return "Project image URL must be a valid http(s) URL or uploaded project media path.";
     }
   }
   return null;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import User, { publicUser } from "./models/User.js";
+import { executeDbFirstMediaClear } from "./routes/users.js";
 import {
   BANNER_THEMES,
   ACCENT_COLORS,
@@ -51,30 +52,111 @@ test("Dynamic Identity Hub - Domain Validations", () => {
   assert.equal(validateSocialsInput({ github: "https://github.com/octocat" }), null);
   assert.ok(validateSocialsInput({ github: "javascript:alert(1)" }));
 
-  // Project imageUrl safety validation
+  // Project imageUrl safety & path traversal validation
   assert.equal(validateProjectInput({ title: "Media App", imageUrl: "/api/media/64f123abc.png" }), null);
+  assert.equal(validateProjectInput({ title: "Versioned App", imageUrl: "/api/v1/media/64f123abc.png" }), null);
+  assert.equal(validateProjectInput({ title: "Local Disk App", imageUrl: "/uploads/projects/project_123.webp" }), null);
   assert.equal(validateProjectInput({ title: "External App", imageUrl: "https://cdn.example.com/demo.webp" }), null);
   assert.ok(validateProjectInput({ title: "XSS App", imageUrl: "javascript:alert(1)" }));
+  assert.ok(validateProjectInput({ title: "Traversal App", imageUrl: "/api/media/../../../etc/passwd" }));
+  assert.ok(validateProjectInput({ title: "Avatar Hijack App", imageUrl: "/uploads/avatars/avatar_123.png" }));
+  assert.ok(validateProjectInput({ title: "Poster Hijack App", imageUrl: "/uploads/posters/poster_123.png" }));
 
-  // Public serialization respects privacy flags when viewer is not self
+  // Public serialization respects privacy flags & masks owner fields by default
   const rawUser = {
     _id: "64f000000000000000000001",
     name: "Privacy Tester",
     email: "private@psit.ac.in",
+    enrollmentNo: "2023CS001",
     role: "student",
     emailVerified: true,
+    emailVerifiedAt: new Date("2026-08-15T00:00:00Z"),
     memberVerified: false,
-    projects: [{ _id: "64f000000000000000000002", title: "Hidden Proj" }],
+    memberVerifiedAt: null,
+    avatarUrl: "/api/media/avatar1.png",
+    avatarPublicId: "secret-avatar-id",
+    avatarProvider: "mongodb",
+    bannerUrl: "/api/media/banner1.png",
+    bannerPublicId: "secret-banner-id",
+    bannerProvider: "mongodb",
+    pendingProjectImages: [
+      { url: "/api/media/pending1.png", publicId: "secret-pending-id", provider: "mongodb" },
+    ],
+    projects: [
+      {
+        _id: "64f000000000000000000002",
+        title: "Hidden Proj",
+        imageUrl: "/api/media/proj1.png",
+        imagePublicId: "secret-proj-id",
+        imageProvider: "mongodb",
+      },
+    ],
     privacy: { showEmail: false, showAttendance: false, showProjects: false },
   };
-  const masked = publicUser(rawUser, { isSelf: false });
-  assert.equal(masked.email, undefined);
-  assert.deepEqual(masked.projects, []);
+  for (const masked of [publicUser(rawUser), publicUser(rawUser, { isSelf: false })]) {
+    assert.equal(masked.email, undefined);
+    assert.equal(masked.enrollmentNo, undefined);
+    assert.equal(masked.emailVerifiedAt, undefined);
+    assert.equal(masked.memberVerifiedAt, undefined);
+    assert.equal(masked.privacy, undefined);
+    assert.equal(masked.pendingProjectImages, undefined);
+    assert.equal(masked.avatarPublicId, undefined);
+    assert.equal(masked.bannerPublicId, undefined);
+    assert.deepEqual(masked.projects, []);
+  }
   const selfView = publicUser(rawUser, { isSelf: true });
   assert.equal(selfView.email, "private@psit.ac.in");
+  assert.equal(selfView.enrollmentNo, "2023CS001");
   assert.equal(selfView.projects.length, 1);
+  assert.equal(selfView.projects[0].imagePublicId, undefined);
+  assert.equal(selfView.projects[0].imageProvider, undefined);
+  assert.equal(selfView.pendingProjectImages, undefined);
+  assert.equal(selfView.avatarPublicId, undefined);
+  assert.equal(selfView.bannerPublicId, undefined);
+  assert.equal(selfView.privacy.showEmail, false);
   assert.equal(selfView.emailVerified, true);
   assert.equal(selfView.memberVerified, false);
+});
+
+test("executeDbFirstMediaClear enforces DB-first deletion and tolerates storage cleanup failure", async () => {
+  let cleanupCalls = [];
+
+  // 1. If DB clear throws, cleanup must NOT run (prevents broken dangling references)
+  await assert.rejects(
+    () =>
+      executeDbFirstMediaClear({
+        persistClear: async () => {
+          throw new Error("Simulated DB write failure");
+        },
+        cleanupAsset: async (...args) => {
+          cleanupCalls.push(args);
+        },
+      }),
+    /Simulated DB write failure/
+  );
+  assert.equal(cleanupCalls.length, 0);
+
+  // 2. If DB clear succeeds, cleanup failure is logged and does NOT fail the operation
+  const res = await executeDbFirstMediaClear({
+    persistClear: async () => ({ oldPublicId: "old-asset-1", oldProvider: "mongodb" }),
+    cleanupAsset: async (id, provider) => {
+      cleanupCalls.push([id, provider]);
+      throw new Error("Simulated transient storage error");
+    },
+  });
+  assert.deepEqual(cleanupCalls, [["old-asset-1", "mongodb"]]);
+  assert.deepEqual(res, { oldPublicId: "old-asset-1", oldProvider: "mongodb" });
+
+  // 3. No-op when nothing existed to clear
+  cleanupCalls = [];
+  const noop = await executeDbFirstMediaClear({
+    persistClear: async () => null,
+    cleanupAsset: async (...args) => {
+      cleanupCalls.push(args);
+    },
+  });
+  assert.equal(noop, null);
+  assert.equal(cleanupCalls.length, 0);
 });
 
 test("Dynamic Identity Hub - End-to-End API Suite", async (t) => {
@@ -310,6 +392,26 @@ test("Dynamic Identity Hub - End-to-End API Suite", async (t) => {
     assert.equal(refreshed.status, 200);
     assert.equal(refreshed.data.projects[0].id, id2);
     assert.equal(refreshed.data.projects[1].id, createdProjectId);
+
+    // Invalid reorder payloads must return 400 and leave order intact
+    for (const invalidOrder of [
+      [id2],
+      [id2, id2],
+      [id2, "000000000000000000000000"],
+      [id2, createdProjectId, "000000000000000000000000"],
+    ]) {
+      const badReorder = await jsonFetch("/api/users/me/projects/reorder", {
+        method: "PUT",
+        headers: authHeaders,
+        body: { order: invalidOrder },
+      });
+      assert.equal(badReorder.status, 400);
+    }
+
+    const stillOrdered = await jsonFetch("/api/users/me", { headers: authHeaders });
+    assert.equal(stillOrdered.status, 200);
+    assert.equal(stillOrdered.data.projects[0].id, id2);
+    assert.equal(stillOrdered.data.projects[1].id, createdProjectId);
   });
 
   await t.test("DELETE /api/users/me/projects/:id removes a project", async () => {
@@ -347,4 +449,165 @@ test("Dynamic Identity Hub - End-to-End API Suite", async (t) => {
     assert.equal(delRes.data.user.bannerUrl, null);
     assert.equal(delRes.data.user.bannerTheme, "google-brand");
   });
+});
+
+test("Dynamic Identity Hub - Media Ownership, Orphan Cleanup & Concurrent Updates", async () => {
+  const validPng =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const ts = Date.now();
+
+  const signupA = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Media Owner A",
+      email: `media-owner-a-${ts}@psit.ac.in`,
+      password: "Password123",
+      confirm: "Password123",
+      branch: "CSE",
+      year: 3,
+    }),
+  });
+  assert.equal(signupA.status, 201);
+  const headersA = { Cookie: signupA.headers.get("set-cookie") };
+
+  const signupB = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Media Attacker B",
+      email: `media-attacker-b-${ts}@psit.ac.in`,
+      password: "Password123",
+      confirm: "Password123",
+      branch: "IT",
+      year: 2,
+    }),
+  });
+  assert.equal(signupB.status, 201);
+  const headersB = { Cookie: signupB.headers.get("set-cookie") };
+
+  // 1. User A uploads project image 1
+  const img1Res = await jsonFetch("/api/users/me/projects/image", {
+    method: "POST",
+    headers: headersA,
+    body: { dataUrl: validPng },
+  });
+  assert.equal(img1Res.status, 201);
+  const img1Url = img1Res.data.url;
+  assert.equal((await fetch(`${BASE_URL}${img1Url}`)).status, 200);
+
+  // 2. User B must NOT be allowed to attach User A's project image via POST or PATCH
+  const stealPost = await jsonFetch("/api/users/me/projects", {
+    method: "POST",
+    headers: headersB,
+    body: { title: "Stolen Image Proj", imageUrl: img1Url },
+  });
+  assert.equal(stealPost.status, 403);
+
+  const projB = await jsonFetch("/api/users/me/projects", {
+    method: "POST",
+    headers: headersB,
+    body: { title: "User B Plain Proj" },
+  });
+  assert.equal(projB.status, 201);
+  const userBProjId = projB.data.project.id;
+
+  const stealPatch = await jsonFetch(`/api/users/me/projects/${userBProjId}`, {
+    method: "PATCH",
+    headers: headersB,
+    body: { imageUrl: img1Url },
+  });
+  assert.equal(stealPatch.status, 403);
+
+  // 3. User A attaches img1Url to two projects; deleting only one keeps shared asset alive
+  const projA1 = await jsonFetch("/api/users/me/projects", {
+    method: "POST",
+    headers: headersA,
+    body: { title: "Shared Image Proj 1", imageUrl: img1Url },
+  });
+  assert.equal(projA1.status, 201);
+  const projA1Id = projA1.data.project.id;
+
+  const projA2 = await jsonFetch("/api/users/me/projects", {
+    method: "POST",
+    headers: headersA,
+    body: { title: "Shared Image Proj 2", imageUrl: img1Url },
+  });
+  assert.equal(projA2.status, 201);
+  const projA2Id = projA2.data.project.id;
+
+  // Cross-user reorder including User B's project ID must return 400
+  const crossReorder = await jsonFetch("/api/users/me/projects/reorder", {
+    method: "PUT",
+    headers: headersA,
+    body: { order: [projA1Id, userBProjId] },
+  });
+  assert.equal(crossReorder.status, 400);
+
+  const delA1 = await jsonFetch(`/api/users/me/projects/${projA1Id}`, {
+    method: "DELETE",
+    headers: headersA,
+  });
+  assert.equal(delA1.status, 200);
+  assert.equal((await fetch(`${BASE_URL}${img1Url}`)).status, 200, "Shared asset stays alive while Proj 2 uses it");
+
+  // 4. Replacing Proj 2's image cleans up orphaned img1Url
+  const img2Res = await jsonFetch("/api/users/me/projects/image", {
+    method: "POST",
+    headers: headersA,
+    body: { dataUrl: validPng },
+  });
+  assert.equal(img2Res.status, 201);
+  const img2Url = img2Res.data.url;
+
+  const replaceImg = await jsonFetch(`/api/users/me/projects/${projA2Id}`, {
+    method: "PATCH",
+    headers: headersA,
+    body: { imageUrl: img2Url },
+  });
+  assert.equal(replaceImg.status, 200);
+  assert.equal((await fetch(`${BASE_URL}${img1Url}`)).status, 404, "Replaced image must be removed");
+  assert.equal((await fetch(`${BASE_URL}${img2Url}`)).status, 200);
+
+  // Deleting Proj 2 cleans up img2Url too
+  const delA2 = await jsonFetch(`/api/users/me/projects/${projA2Id}`, {
+    method: "DELETE",
+    headers: headersA,
+  });
+  assert.equal(delA2.status, 200);
+  assert.equal((await fetch(`${BASE_URL}${img2Url}`)).status, 404, "Deleted project image must be removed");
+
+  // 5. Concurrent avatar replacements & double deletion stay consistent
+  const avInit = await jsonFetch("/api/users/me/avatar", {
+    method: "POST",
+    headers: headersA,
+    body: { dataUrl: validPng },
+  });
+  assert.equal(avInit.status, 200);
+  const initialAvatarUrl = avInit.data.user.avatarUrl;
+
+  const [r1, r2] = await Promise.all([
+    jsonFetch("/api/users/me/avatar", { method: "POST", headers: headersA, body: { dataUrl: validPng } }),
+    jsonFetch("/api/users/me/avatar", { method: "POST", headers: headersA, body: { dataUrl: validPng } }),
+  ]);
+  assert.equal(r1.status, 200);
+  assert.equal(r2.status, 200);
+  assert.equal((await fetch(`${BASE_URL}${initialAvatarUrl}`)).status, 404);
+
+  const meAfterRace = await jsonFetch("/api/users/me", { headers: headersA });
+  assert.equal(meAfterRace.status, 200);
+  const activeAvatarUrl = meAfterRace.data.avatarUrl;
+  assert.ok(activeAvatarUrl);
+  assert.equal((await fetch(`${BASE_URL}${activeAvatarUrl}`)).status, 200, "Active avatar must remain retrievable");
+
+  const [d1, d2] = await Promise.all([
+    jsonFetch("/api/users/me/avatar", { method: "DELETE", headers: headersA }),
+    jsonFetch("/api/users/me/avatar", { method: "DELETE", headers: headersA }),
+  ]);
+  const delStatuses = [d1.status, d2.status].sort((a, b) => a - b);
+  assert.deepEqual(delStatuses, [200, 400]);
+
+  const meCleared = await jsonFetch("/api/users/me", { headers: headersA });
+  assert.equal(meCleared.data.avatarUrl, null);
+  assert.equal((await fetch(`${BASE_URL}${activeAvatarUrl}`)).status, 404);
 });

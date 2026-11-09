@@ -266,8 +266,26 @@ test("ProfileEditorModal updates personal details and closes on Escape", async (
 
   render(<ProfileEditorModal user={EMAIL_ONLY_USER} onUpdated={onUpdated} onClose={onClose} />);
 
+  // Accessible modal interactions: tabs + unsaved changes confirmation
   const headlineInput = screen.getByLabelText("Professional Headline") as HTMLInputElement;
+  expect(screen.getByRole("tablist", { name: "Profile editor sections" })).toBeDefined();
+  expect(screen.getByRole("tab", { name: /Identity & Bio/i }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tabpanel")).toBeDefined();
+
   fireEvent.change(headlineInput, { target: { value: "Systems Tinkerer" } });
+
+  // Pressing Escape before saving triggers discard confirmation without closing
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.getByRole("alertdialog")).toBeDefined();
+  expect(screen.getByText("Discard unsaved changes?")).toBeDefined();
+  expect(onClose).toHaveBeenCalledTimes(0);
+
+  // Keeping edits restores editing flow
+  fireEvent.click(screen.getByRole("button", { name: "Keep Editing" }));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(headlineInput.value).toBe("Systems Tinkerer");
+
+  // Save changes -> clears dirty state, allowing clean Escape close
   fireEvent.click(screen.getByRole("button", { name: "Save Identity Details" }));
 
   await waitFor(() => {
@@ -277,6 +295,64 @@ test("ProfileEditorModal updates personal details and closes on Escape", async (
 
   fireEvent.keyDown(window, { key: "Escape" });
   expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("ProfileEditorModal discards edits cleanly after explicit confirmation", () => {
+  const onClose = vi.fn();
+  render(<ProfileEditorModal user={EMAIL_ONLY_USER} onUpdated={() => {}} onClose={onClose} />);
+
+  fireEvent.change(screen.getByLabelText("Professional Headline"), {
+    target: { value: "Unsaved Draft Headline" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(screen.getByRole("alertdialog")).toBeDefined();
+  expect(onClose).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: /Discard & Close/i }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("Profile shows honest unavailable ticket state and retries only /tickets without unmounting profile", async () => {
+  let ticketAttempts = 0;
+  let userAttempts = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      const s = String(url);
+      if (s.includes("/users/me")) {
+        userAttempts += 1;
+        return respond(200, FULL_DEVELOPER_USER);
+      }
+      if (s.includes("/tickets")) {
+        ticketAttempts += 1;
+        if (ticketAttempts === 1) {
+          return respond(500, { message: "Temporary outage" });
+        }
+        return respond(200, { tickets: [] });
+      }
+      return respond(404, {});
+    })
+  );
+
+  render(<Profile />);
+
+  await waitFor(() => {
+    expect(screen.getByText("Community activity is temporarily unavailable.")).toBeDefined();
+  });
+
+  // MemberCard displays "–" rather than fabricated zeros while activity failed
+  expect(screen.getAllByText("–").length).toBeGreaterThanOrEqual(3);
+  // Rest of the profile remains intact
+  expect(screen.getByRole("heading", { name: "Aarav Verma" })).toBeDefined();
+  expect(screen.getByText("Technical Skills & Tooling")).toBeDefined();
+
+  // Retry loads only /tickets and recovers cleanly
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => {
+    expect(screen.getByText("No event registrations yet")).toBeDefined();
+  });
+  expect(ticketAttempts).toBe(2);
+  expect(userAttempts).toBe(1);
 });
 
 test("Full Profile page loads real API data and renders all 6 identity hub sections", async () => {
@@ -304,9 +380,9 @@ test("Full Profile page loads real API data and renders all 6 identity hub secti
   expect(screen.getByText("Privacy & Account Preferences")).toBeDefined();
   expect(screen.getByRole("button", { name: /Customize Profile/i })).toBeDefined();
 
-  // Open modal via hero CTA
+  // Open lazy-loaded modal via hero CTA
   fireEvent.click(screen.getByRole("button", { name: /Customize Profile/i }));
-  expect(screen.getByRole("dialog")).toBeDefined();
+  expect(await screen.findByRole("dialog")).toBeDefined();
   expect(screen.getByText("Customize Developer Identity Hub")).toBeDefined();
 });
 

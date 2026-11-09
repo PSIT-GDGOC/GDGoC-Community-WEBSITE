@@ -9,10 +9,22 @@ const projectSchema = new mongoose.Schema(
     githubUrl: { type: String, default: "", trim: true },
     liveUrl: { type: String, default: "", trim: true },
     imageUrl: { type: String, default: null },
+    imagePublicId: { type: String, default: null },
+    imageProvider: { type: String, default: null },
     featured: { type: Boolean, default: false },
     order: { type: Number, default: 0 },
   },
   { timestamps: true }
+);
+
+const pendingMediaSchema = new mongoose.Schema(
+  {
+    url: { type: String, required: true },
+    publicId: { type: String, required: true },
+    provider: { type: String, required: true },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
 );
 
 const skillSchema = new mongoose.Schema(
@@ -70,6 +82,7 @@ const userSchema = new mongoose.Schema(
     },
     skills: { type: [skillSchema], default: [] },
     projects: { type: [projectSchema], default: [] },
+    pendingProjectImages: { type: [pendingMediaSchema], default: [] },
     memberVerified: { type: Boolean, default: false },
     memberVerifiedAt: { type: Date, default: null },
     privacy: {
@@ -82,7 +95,8 @@ const userSchema = new mongoose.Schema(
 );
 
 export function publicUser(u, options = {}) {
-  const isSelf = options.isSelf ?? true;
+  // Owner-only data must be explicitly requested by authenticated routes.
+  const isSelf = options.isSelf === true;
   return {
     id: u._id ? u._id.toString() : (u.id || undefined),
     name: u.name,
@@ -91,12 +105,12 @@ export function publicUser(u, options = {}) {
     branch: u.branch,
     year: u.year,
     bio: u.bio,
-    enrollmentNo: u.enrollmentNo,
+    enrollmentNo: isSelf ? u.enrollmentNo : undefined,
     avatarUrl: u.avatarUrl ?? null,
     emailVerified: Boolean(u.emailVerified),
-    emailVerifiedAt: u.emailVerifiedAt ?? null,
+    emailVerifiedAt: isSelf ? (u.emailVerifiedAt ?? null) : undefined,
     memberVerified: Boolean(u.memberVerified),
-    memberVerifiedAt: u.memberVerifiedAt ?? null,
+    memberVerifiedAt: isSelf ? (u.memberVerifiedAt ?? null) : undefined,
     headline: u.headline || "",
     college: u.college || "PSIT Kanpur",
     specialization: u.specialization || "",
@@ -130,11 +144,13 @@ export function publicUser(u, options = {}) {
             }))
           : [])
       : [],
-    privacy: {
-      showEmail: Boolean(u.privacy?.showEmail),
-      showAttendance: u.privacy?.showAttendance !== false,
-      showProjects: u.privacy?.showProjects !== false,
-    },
+    privacy: isSelf
+      ? {
+          showEmail: Boolean(u.privacy?.showEmail),
+          showAttendance: u.privacy?.showAttendance !== false,
+          showProjects: u.privacy?.showProjects !== false,
+        }
+      : undefined,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   };

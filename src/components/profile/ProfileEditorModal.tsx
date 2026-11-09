@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   api,
   BRANCHES,
@@ -33,6 +33,50 @@ const inputCls =
   "w-full border-[2px] border-ink bg-bg px-3 py-2 text-sm text-ink disabled:bg-panel2 disabled:text-muted focus:outline-none focus:ring-2 focus:ring-gblue";
 const labelCls = "block text-xs font-bold uppercase tracking-wider text-muted mb-1";
 
+type SavedEditorBaseline = {
+  name: string;
+  headline: string;
+  specialization: string;
+  bio: string;
+  branch: string;
+  year: number | undefined;
+  college: string;
+  bannerTheme: BannerTheme;
+  cardTheme: CardTheme;
+  accentColor: AccentColor;
+  socials: {
+    github: string;
+    linkedin: string;
+    portfolio: string;
+    website: string;
+    twitter: string;
+  };
+  skills: SkillItem[];
+};
+
+function buildEditorBaseline(u: Profile): SavedEditorBaseline {
+  return {
+    name: u.name,
+    headline: u.headline || "",
+    specialization: u.specialization || "",
+    bio: u.bio || "",
+    branch: u.branch || "",
+    year: u.year,
+    college: u.college || "PSIT Kanpur",
+    bannerTheme: u.bannerTheme || "google-brand",
+    cardTheme: u.cardTheme || "default",
+    accentColor: u.accentColor || "gblue",
+    socials: {
+      github: u.socials?.github || "",
+      linkedin: u.socials?.linkedin || "",
+      portfolio: u.socials?.portfolio || "",
+      website: u.socials?.website || "",
+      twitter: u.socials?.twitter || "",
+    },
+    skills: (u.skills || []).map((s) => ({ name: s.name, category: s.category || "Other" })),
+  };
+}
+
 export default function ProfileEditorModal({
   user,
   initialTab = "personal",
@@ -46,8 +90,11 @@ export default function ProfileEditorModal({
 }) {
   const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
   const [saving, setSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const keepEditingRef = useRef<HTMLButtonElement>(null);
+  const [baseline, setBaseline] = useState<SavedEditorBaseline>(() => buildEditorBaseline(user));
 
   // Form states initialized from user
   const [name, setName] = useState(user.name);
@@ -92,19 +139,154 @@ export default function ProfileEditorModal({
   const [projLive, setProjLive] = useState("");
   const [projImage, setProjImage] = useState("");
   const [projFeatured, setProjFeatured] = useState(false);
+  const [editingProjBaseline, setEditingProjBaseline] = useState<{
+    title: string;
+    description: string;
+    stack: string;
+    github: string;
+    live: string;
+    image: string;
+    featured: boolean;
+  } | null>(null);
+
+  const isDirty = useMemo(() => {
+    const identityDirty =
+      name.trim() !== baseline.name.trim() ||
+      headline.trim() !== baseline.headline.trim() ||
+      specialization.trim() !== baseline.specialization.trim() ||
+      bio.trim() !== baseline.bio.trim() ||
+      branch !== baseline.branch ||
+      year !== baseline.year ||
+      (college.trim() || "PSIT Kanpur") !== baseline.college;
+
+    const appearanceDirty =
+      bannerTheme !== baseline.bannerTheme ||
+      cardTheme !== baseline.cardTheme ||
+      accentColor !== baseline.accentColor ||
+      socials.github.trim() !== baseline.socials.github.trim() ||
+      socials.linkedin.trim() !== baseline.socials.linkedin.trim() ||
+      socials.portfolio.trim() !== baseline.socials.portfolio.trim() ||
+      socials.website.trim() !== baseline.socials.website.trim() ||
+      socials.twitter.trim() !== baseline.socials.twitter.trim();
+
+    const skillsDirty =
+      customSkillName.trim().length > 0 ||
+      skills.length !== baseline.skills.length ||
+      skills.some(
+        (s, i) =>
+          s.name !== baseline.skills[i]?.name ||
+          (s.category || "Other") !== (baseline.skills[i]?.category || "Other")
+      );
+
+    const projectDirty = editingProjId && editingProjBaseline
+      ? projTitle !== editingProjBaseline.title ||
+        projDesc !== editingProjBaseline.description ||
+        projStack !== editingProjBaseline.stack ||
+        projGithub !== editingProjBaseline.github ||
+        projLive !== editingProjBaseline.live ||
+        projImage !== editingProjBaseline.image ||
+        projFeatured !== editingProjBaseline.featured
+      : Boolean(
+          projTitle.trim() ||
+            projDesc.trim() ||
+            projStack.trim() ||
+            projGithub.trim() ||
+            projLive.trim() ||
+            projImage.trim() ||
+            projFeatured
+        );
+
+    return identityDirty || appearanceDirty || skillsDirty || projectDirty;
+  }, [
+    name,
+    headline,
+    specialization,
+    bio,
+    branch,
+    year,
+    college,
+    bannerTheme,
+    cardTheme,
+    accentColor,
+    socials,
+    skills,
+    customSkillName,
+    editingProjId,
+    editingProjBaseline,
+    projTitle,
+    projDesc,
+    projStack,
+    projGithub,
+    projLive,
+    projImage,
+    projFeatured,
+    baseline,
+  ]);
 
   useEffect(() => {
+    if (!isDirty && confirmDiscard) {
+      setConfirmDiscard(false);
+    }
+  }, [isDirty, confirmDiscard]);
+
+  useEffect(() => {
+    if (confirmDiscard) {
+      keepEditingRef.current?.focus();
+    }
+  }, [confirmDiscard]);
+
+  const requestClose = useCallback(() => {
+    if (saving || mediaBusy) return;
+    if (isDirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  }, [saving, mediaBusy, isDirty, onClose]);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     modalRef.current?.focus();
+    return () => {
+      try {
+        previouslyFocused?.focus?.();
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (cropSrc) return;
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        if (confirmDiscard) {
+          setConfirmDiscard(false);
+        } else {
+          requestClose();
+        }
+        return;
+      }
+      if (e.key === "Tab" && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === modalRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [cropSrc, onClose]);
+  }, [cropSrc, confirmDiscard, requestClose]);
 
   const showStatus = (ok: boolean, text: string) => setMsg({ ok, text });
 
@@ -121,17 +303,19 @@ export default function ProfileEditorModal({
     }
     setSaving(true);
     setMsg(null);
+    const trimmedPayload = {
+      name: name.trim(),
+      headline: headline.trim(),
+      specialization: specialization.trim(),
+      bio: bio.trim(),
+      branch,
+      year,
+      college: college.trim() || "PSIT Kanpur",
+    };
     try {
-      const updated = await api<Profile>("/users/me", "PATCH", {
-        name: name.trim(),
-        headline: headline.trim(),
-        specialization: specialization.trim(),
-        bio: bio.trim(),
-        branch,
-        year,
-        college: college.trim() || "PSIT Kanpur",
-      });
+      const updated = await api<Profile>("/users/me", "PATCH", trimmedPayload);
       onUpdated(updated);
+      setBaseline((b) => ({ ...b, ...trimmedPayload }));
       showStatus(true, "Personal and academic profile updated.");
     } catch (error) {
       showStatus(false, (error as Error).message || "Failed to save changes.");
@@ -144,14 +328,29 @@ export default function ProfileEditorModal({
     e.preventDefault();
     setSaving(true);
     setMsg(null);
+    const nextSocials = {
+      github: socials.github.trim(),
+      linkedin: socials.linkedin.trim(),
+      portfolio: socials.portfolio.trim(),
+      website: socials.website.trim(),
+      twitter: socials.twitter.trim(),
+    };
     try {
       const updated = await api<Profile>("/users/me", "PATCH", {
-        socials,
+        socials: nextSocials,
         accentColor,
         cardTheme,
         bannerTheme,
       });
       onUpdated(updated);
+      setSocials(nextSocials);
+      setBaseline((b) => ({
+        ...b,
+        socials: nextSocials,
+        accentColor,
+        cardTheme,
+        bannerTheme,
+      }));
       showStatus(true, "Social links and appearance saved.");
     } catch (error) {
       showStatus(false, (error as Error).message || "Failed to save links and appearance.");
@@ -196,9 +395,11 @@ export default function ProfileEditorModal({
   const handleSaveSkills = async () => {
     setSaving(true);
     setMsg(null);
+    const cleanSkills = skills.map((s) => ({ name: s.name, category: s.category || "Other" }));
     try {
-      const updated = await api<Profile>("/users/me", "PATCH", { skills });
+      const updated = await api<Profile>("/users/me", "PATCH", { skills: cleanSkills });
       onUpdated(updated);
+      setBaseline((b) => ({ ...b, skills: cleanSkills }));
       showStatus(true, "Technical skills updated.");
     } catch (error) {
       showStatus(false, (error as Error).message || "Failed to update skills.");
@@ -279,6 +480,7 @@ export default function ProfileEditorModal({
         });
         onUpdated(res.user);
         setBannerTheme("custom");
+        setBaseline((b) => ({ ...b, bannerTheme: "custom" }));
         showStatus(true, "Custom cover banner uploaded.");
       } catch (error) {
         showStatus(false, (error as Error).message || "Banner upload failed.");
@@ -296,6 +498,7 @@ export default function ProfileEditorModal({
       const res = await api<{ user: Profile }>("/users/me/banner", "DELETE");
       onUpdated(res.user);
       setBannerTheme("google-brand");
+      setBaseline((b) => ({ ...b, bannerTheme: "google-brand" }));
       showStatus(true, "Cover banner reset to Google Brand.");
     } catch (error) {
       showStatus(false, (error as Error).message || "Failed to remove custom banner.");
@@ -311,6 +514,7 @@ export default function ProfileEditorModal({
     try {
       const updated = await api<Profile>("/users/me", "PATCH", { bannerTheme: theme });
       onUpdated(updated);
+      setBaseline((b) => ({ ...b, bannerTheme: theme }));
       showStatus(true, "Banner theme applied.");
     } catch (error) {
       showStatus(false, (error as Error).message || "Failed to update banner theme.");
@@ -325,6 +529,7 @@ export default function ProfileEditorModal({
 
   const resetProjectForm = () => {
     setEditingProjId(null);
+    setEditingProjBaseline(null);
     setProjTitle("");
     setProjDesc("");
     setProjStack("");
@@ -366,14 +571,24 @@ export default function ProfileEditorModal({
   };
 
   const startEditProject = (p: ProjectItem) => {
+    const snapshot = {
+      title: p.title,
+      description: p.description || "",
+      stack: (p.techStack || []).join(", "),
+      github: p.githubUrl || "",
+      live: p.liveUrl || "",
+      image: p.imageUrl || "",
+      featured: Boolean(p.featured),
+    };
     setEditingProjId(p.id || p._id || null);
-    setProjTitle(p.title);
-    setProjDesc(p.description || "");
-    setProjStack((p.techStack || []).join(", "));
-    setProjGithub(p.githubUrl || "");
-    setProjLive(p.liveUrl || "");
-    setProjImage(p.imageUrl || "");
-    setProjFeatured(Boolean(p.featured));
+    setEditingProjBaseline(snapshot);
+    setProjTitle(snapshot.title);
+    setProjDesc(snapshot.description);
+    setProjStack(snapshot.stack);
+    setProjGithub(snapshot.github);
+    setProjLive(snapshot.live);
+    setProjImage(snapshot.image);
+    setProjFeatured(snapshot.featured);
     setMsg(null);
   };
 
@@ -455,6 +670,9 @@ export default function ProfileEditorModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="editor-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) requestClose();
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-2 sm:p-6 backdrop-blur-xs overflow-y-auto"
     >
       <div
@@ -463,8 +681,8 @@ export default function ProfileEditorModal({
         className="relative flex max-h-[92vh] w-full max-w-4xl flex-col border-[3px] border-ink bg-bg shadow-[10px_10px_0_var(--color-ink)] outline-none"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b-[3px] border-ink bg-panel px-5 py-4">
-          <div>
+        <div className="flex items-center justify-between gap-3 border-b-[3px] border-ink bg-panel px-4 sm:px-5 py-4">
+          <div className="min-w-0">
             <h2 id="editor-modal-title" className="font-display text-lg font-black text-ink sm:text-xl">
               Customize Developer Identity Hub
             </h2>
@@ -474,33 +692,77 @@ export default function ProfileEditorModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center border-2 border-ink bg-bg font-bold text-ink hover:bg-gred hover:text-white shadow-[2px_2px_0_var(--color-ink)]"
+            onClick={requestClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center border-2 border-ink bg-bg font-bold text-ink hover:bg-gred hover:text-white shadow-[2px_2px_0_var(--color-ink)]"
             aria-label="Close profile editor"
           >
             ✕
           </button>
         </div>
 
+        {/* Unsaved Changes Confirmation */}
+        {confirmDiscard && (
+          <div
+            role="alertdialog"
+            aria-modal="false"
+            aria-labelledby="discard-confirm-title"
+            className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-ink bg-wash-yellow px-4 sm:px-5 py-3"
+          >
+            <div className="min-w-0">
+              <p id="discard-confirm-title" className="font-display text-xs font-black text-ink">
+                Discard unsaved changes?
+              </p>
+              <p className="text-[11px] text-ink/80">
+                You have un-saved edits in this editor. Save them first or discard to close.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                ref={keepEditingRef}
+                type="button"
+                onClick={() => setConfirmDiscard(false)}
+                className="border-2 border-ink bg-bg px-3 py-1.5 font-display text-xs font-bold text-ink hover:bg-panel"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="hard-button border-2 border-ink bg-gred px-3 py-1.5 font-display text-xs font-bold text-white shadow-[2px_2px_0_var(--color-ink)]"
+              >
+                Discard &amp; Close
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Navigation Tabs Bar */}
-        <div className="flex flex-wrap gap-1 border-b-2 border-ink bg-panel2 px-4 pt-3">
+        <div
+          role="tablist"
+          aria-label="Profile editor sections"
+          className="flex overflow-x-auto sm:flex-wrap gap-1 border-b-2 border-ink bg-panel2 px-3 sm:px-4 pt-3"
+        >
           {TABS.map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                id={`tab-${tab.id}`}
+                role="tab"
+                aria-selected={active}
+                aria-controls="editor-tabpanel"
                 type="button"
                 onClick={() => {
                   setActiveTab(tab.id);
                   setMsg(null);
                 }}
-                className={`inline-flex items-center gap-1.5 border-t-2 border-l-2 border-r-2 px-3.5 py-2 font-display text-xs font-bold transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1.5 border-t-2 border-l-2 border-r-2 px-3.5 py-2 font-display text-xs font-bold transition-colors ${
                   active
                     ? "border-ink bg-bg text-ink -mb-[2px] border-b-2 border-b-bg"
                     : "border-transparent text-muted hover:text-ink"
                 }`}
               >
-                <span>{tab.icon}</span>
+                <span aria-hidden="true">{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             );
@@ -508,7 +770,12 @@ export default function ProfileEditorModal({
         </div>
 
         {/* Scrollable Editor Body */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-7">
+        <div
+          id="editor-tabpanel"
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          className="flex-1 overflow-y-auto p-4 sm:p-7"
+        >
           {msg && (
             <div
               role={msg.ok ? "status" : "alert"}
@@ -833,14 +1100,14 @@ export default function ProfileEditorModal({
                 <label className={labelCls}>Add Custom Skill</label>
                 <div className="flex flex-wrap gap-2">
                   <input
-                    className={`${inputCls} flex-1 min-w-[160px]`}
+                    className={`${inputCls} min-w-0 w-full sm:w-auto sm:flex-1`}
                     placeholder="e.g. WebAssembly, CUDA, Terraform..."
                     value={customSkillName}
                     onChange={(e) => setCustomSkillName(e.target.value)}
                     maxLength={40}
                   />
                   <select
-                    className={`${inputCls} w-auto`}
+                    className={`${inputCls} w-full sm:w-auto`}
                     value={customSkillCategory}
                     onChange={(e) => setCustomSkillCategory(e.target.value)}
                   >
@@ -964,7 +1231,7 @@ export default function ProfileEditorModal({
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         id="proj-image"
-                        className={`${inputCls} flex-1 min-w-[200px]`}
+                        className={`${inputCls} min-w-0 w-full sm:w-auto sm:flex-1`}
                         value={projImage}
                         onChange={(e) => setProjImage(e.target.value)}
                         placeholder="https://... or upload an image"
@@ -1208,13 +1475,13 @@ export default function ProfileEditorModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t-2 border-ink bg-panel2 px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-ink bg-panel2 px-4 sm:px-5 py-3">
           <span className="text-[11px] font-medium text-muted">
-            Changes update immediately on your live hub.
+            {isDirty ? "You have unsaved edits." : "Changes update immediately on your live hub."}
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="hard-button border-2 border-ink bg-bg px-4 py-1.5 font-display text-xs font-bold text-ink hover:bg-panel"
           >
             Done

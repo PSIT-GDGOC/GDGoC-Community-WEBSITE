@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import MemberCard from "./MemberCard";
 import MemberNav from "./MemberNav";
 import ProfileHero from "./profile/ProfileHero";
@@ -6,11 +6,13 @@ import ProfileSkills from "./profile/ProfileSkills";
 import ProfileProjects from "./profile/ProfileProjects";
 import CommunityJourney from "./profile/CommunityJourney";
 import ProfilePreferences from "./profile/ProfilePreferences";
-import ProfileEditorModal, { type EditorTab } from "./profile/ProfileEditorModal";
+import type { EditorTab } from "./profile/ProfileEditorModal";
 import AvatarCropModal from "./profile/AvatarCropModal";
 import { api, type Profile as P } from "../lib/profile";
 import { ticketSummary } from "../lib/dashboard";
 import type { Ticket } from "../lib/tickets";
+
+const ProfileEditorModal = lazy(() => import("./profile/ProfileEditorModal"));
 
 export const input =
   "w-full border-[3px] border-ink bg-bg px-3 py-2 text-ink disabled:bg-panel2 disabled:text-muted";
@@ -20,6 +22,7 @@ export const button =
 export default function Profile() {
   const [user, setUser] = useState<P | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [ticketsStatus, setTicketsStatus] = useState<"loading" | "ready" | "error">("loading");
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTab, setEditorTab] = useState<EditorTab>("personal");
@@ -29,20 +32,29 @@ export default function Profile() {
     setEditorOpen(true);
   };
 
+  const loadTickets = async () => {
+    setTicketsStatus("loading");
+    try {
+      const ticketData = await api<{ tickets: Ticket[] }>("/tickets");
+      setTickets(ticketData?.tickets || []);
+      setTicketsStatus("ready");
+    } catch {
+      setTicketsStatus("error");
+    }
+  };
+
   const loadUser = async () => {
     setStatus("loading");
     try {
-      const [me, ticketData] = await Promise.all([
-        api<P>("/users/me"),
-        api<{ tickets: Ticket[] }>("/tickets").catch(() => ({ tickets: [] })),
-      ]);
+      setTicketsStatus("loading");
+      const me = await api<P>("/users/me");
 
       if (!me?.name) {
         throw new Error("bad response");
       }
       setUser(me);
-      setTickets(ticketData?.tickets || []);
       setStatus("ready");
+      await loadTickets();
     } catch (error) {
       if ((error as Error).message === "401") {
         location.hash = "#/login?next=/profile";
@@ -124,7 +136,7 @@ export default function Profile() {
               </div>
 
               {/* AREA 4: COMMUNITY PARTICIPATION & TIMELINE */}
-              <CommunityJourney tickets={tickets} />
+              <CommunityJourney tickets={tickets} status={ticketsStatus} onRetry={loadTickets} />
 
               {/* AREA 6: PRIVACY & ACCOUNT PREFERENCES */}
               <ProfilePreferences user={user} onUpdated={setUser} />
@@ -134,9 +146,9 @@ export default function Profile() {
             <aside className="mx-auto w-full max-w-[360px] space-y-6 lg:sticky lg:top-28">
               <MemberCard
                 user={user}
-                upcoming={upcomingCount}
-                attended={user.privacy?.showAttendance !== false ? attendedCount : undefined}
-                registered={registeredCount}
+                upcoming={ticketsStatus === "ready" ? upcomingCount : null}
+                attended={user.privacy?.showAttendance !== false && ticketsStatus === "ready" ? attendedCount : null}
+                registered={ticketsStatus === "ready" ? registeredCount : null}
               />
 
               <QuickPhotoControl user={user} onSaved={setUser} onOpenMediaTab={() => openEditor("media")} />
@@ -145,14 +157,28 @@ export default function Profile() {
         </div>
       )}
 
-      {/* TABBED PROFILE EDITOR MODAL */}
+      {/* TABBED PROFILE EDITOR MODAL (LAZY LOADED) */}
       {user && editorOpen && (
-        <ProfileEditorModal
-          user={user}
-          initialTab={editorTab}
-          onUpdated={setUser}
-          onClose={() => setEditorOpen(false)}
-        />
+        <Suspense
+          fallback={
+            <div
+              role="status"
+              aria-live="polite"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+            >
+              <div className="border-[3px] border-ink bg-bg px-6 py-4 font-display text-sm font-bold text-ink shadow-[6px_6px_0_var(--color-ink)]">
+                Loading Profile Editor…
+              </div>
+            </div>
+          }
+        >
+          <ProfileEditorModal
+            user={user}
+            initialTab={editorTab}
+            onUpdated={setUser}
+            onClose={() => setEditorOpen(false)}
+          />
+        </Suspense>
       )}
     </main>
   );

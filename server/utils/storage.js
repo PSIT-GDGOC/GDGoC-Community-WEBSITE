@@ -268,7 +268,7 @@ async function uploadPosterToLocalDisk(fileBuffer, ext) {
 /**
  * Upload media directly to MongoDB Media collection
  */
-async function uploadToMongoDB(fileBuffer, ext, type) {
+async function uploadToMongoDB(fileBuffer, ext, type, ownerId = null) {
   const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
   const filename = `${type}_${crypto.randomBytes(16).toString("hex")}.${ext}`;
 
@@ -278,6 +278,7 @@ async function uploadToMongoDB(fileBuffer, ext, type) {
     filename,
     size: fileBuffer.length,
     type,
+    ...(ownerId ? { owner: ownerId } : {}),
   });
 
   return {
@@ -379,7 +380,7 @@ async function uploadImageToLocalDisk(fileBuffer, ext, { subdir, prefix, urlPref
 /**
  * Upload avatar entry point
  */
-export async function uploadAvatar(fileBuffer, ext) {
+export async function uploadAvatar(fileBuffer, ext, { ownerId = null } = {}) {
   const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
   const cloudinaryConfig = getCloudinaryConfig();
 
@@ -401,13 +402,13 @@ export async function uploadAvatar(fileBuffer, ext) {
   }
 
   // Persistent storage in MongoDB for development and production without Cloudinary
-  return uploadToMongoDB(sanitizedBuffer, ext, "avatar");
+  return uploadToMongoDB(sanitizedBuffer, ext, "avatar", ownerId);
 }
 
 /**
  * Upload profile cover banner entry point (preserves widescreen landscape ratio)
  */
-export async function uploadBanner(fileBuffer, ext) {
+export async function uploadBanner(fileBuffer, ext, { ownerId = null } = {}) {
   const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
   const cloudinaryConfig = getCloudinaryConfig();
 
@@ -427,13 +428,13 @@ export async function uploadBanner(fileBuffer, ext) {
     });
   }
 
-  return uploadToMongoDB(sanitizedBuffer, ext, "banner");
+  return uploadToMongoDB(sanitizedBuffer, ext, "banner", ownerId);
 }
 
 /**
  * Upload featured project cover image entry point (preserves landscape aspect ratio)
  */
-export async function uploadProjectImage(fileBuffer, ext) {
+export async function uploadProjectImage(fileBuffer, ext, { ownerId = null } = {}) {
   const sanitizedBuffer = stripImageMetadata(fileBuffer, ext);
   const cloudinaryConfig = getCloudinaryConfig();
 
@@ -453,7 +454,7 @@ export async function uploadProjectImage(fileBuffer, ext) {
     });
   }
 
-  return uploadToMongoDB(sanitizedBuffer, ext, "project");
+  return uploadToMongoDB(sanitizedBuffer, ext, "project", ownerId);
 }
 
 /**

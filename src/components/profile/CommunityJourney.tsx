@@ -2,8 +2,12 @@ import { type Ticket } from "../../lib/tickets";
 
 export default function CommunityJourney({
   tickets,
+  status = "ready",
+  onRetry,
 }: {
   tickets: Ticket[];
+  status?: "loading" | "ready" | "error";
+  onRetry?: () => void;
 }) {
   const activeTickets = tickets.filter(
     (t) => t.state !== "cancelled" && t.state !== "event_cancelled"
@@ -37,6 +41,48 @@ export default function CommunityJourney({
         </p>
       </div>
 
+      {status === "loading" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-5 space-y-4 border-2 border-ink bg-panel p-4 shadow-[3px_3px_0_var(--color-ink)]"
+        >
+          <p className="font-display text-sm font-bold text-ink">Loading community activity…</p>
+          <div className="grid grid-cols-3 gap-3 sm:gap-4" aria-hidden="true">
+            {[0, 1, 2].map((idx) => (
+              <div
+                key={idx}
+                className="h-20 border-2 border-ink/40 bg-bg/70 p-3 animate-pulse motion-reduce:animate-none"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {status === "error" && (
+        <div
+          role="alert"
+          className="mt-5 flex flex-wrap items-center justify-between gap-4 border-2 border-ink bg-wash-red p-4 shadow-[3px_3px_0_var(--color-ink)]"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-sm font-bold text-[#C5221F]">
+              Community activity is temporarily unavailable.
+            </p>
+            <p className="mt-1 text-xs text-ink/80">
+              Your profile details remain intact. Reload your event tickets and verified attendance when ready.
+            </p>
+          </div>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="hard-button border-2 border-ink bg-gyellow px-4 py-2 font-display text-xs font-bold text-ink shadow-[2px_2px_0_var(--color-ink)] hover:bg-gyellow/80"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+      {status === "ready" && <>
       {/* 3 Activity Metrics Grid */}
       <div className="mt-5 grid grid-cols-3 gap-3 sm:gap-4">
         <div className="flex flex-col items-center justify-center border-2 border-ink bg-panel p-3 text-center shadow-[3px_3px_0_var(--color-ink)] sm:p-4">
@@ -179,6 +225,7 @@ export default function CommunityJourney({
           </div>
         )}
       </div>
+      </>}
     </section>
   );
 }

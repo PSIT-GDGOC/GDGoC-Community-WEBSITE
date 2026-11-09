@@ -72,7 +72,7 @@ router.post("/register", async (req, res) => {
   // Directly create an authenticated session and return public user
   await clearAuthFailures(form.email);
   setSession(res, user);
-  return res.status(201).json(publicUser(user));
+  return res.status(201).json(publicUser(user, { isSelf: true }));
 });
 
 router.post("/login", async (req, res) => {
@@ -89,7 +89,7 @@ router.post("/login", async (req, res) => {
   // Authenticate user directly without blocking on emailVerified
   await clearAuthFailures(email);
   setSession(res, user);
-  res.json(publicUser(user));
+  res.json(publicUser(user, { isSelf: true }));
 });
 
 const FORGOT_PW_WINDOW_MS = 15 * 60 * 1000;

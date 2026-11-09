@@ -342,9 +342,9 @@ export default function MemberCard({
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
                     user.role === "admin"
-                      ? "bg-gred animate-pulse"
+                      ? "bg-gred animate-pulse motion-reduce:animate-none"
                       : user.memberVerified
-                      ? "bg-ggreen animate-pulse"
+                      ? "bg-ggreen animate-pulse motion-reduce:animate-none"
                       : user.emailVerified
                       ? "bg-gblue"
                       : "bg-gyellow"
